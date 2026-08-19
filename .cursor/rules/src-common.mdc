@@ -1,0 +1,12 @@
+---
+description: Shared generator helpers live in this package; language packs re-export them.
+alwaysApply: true
+---
+
+# generators-common
+
+This package owns helpers used by more than one generator pack (`deterministic-reader`, `generate-context`, `generate-entry`, `fill`, `yaml-node`, `yaml-entry`, `specification`, `compile-filter`, `default-token`).
+
+Do not add language-specific path layout (`paths.ts`) or native type mapping (`type-converter` / `type-converters`). Those stay in each language pack.
+
+`generate` is still the only export each language lane has. It takes `GenerateContext`: `{ reader, settings }` where `reader` is `{ read, exists }` (`IDeterministicReader`) and `settings` is the flat string dict.

@@ -1,0 +1,18 @@
+---
+description: Use arrow function syntax for TypeScript functions in this pack.
+globs: **/*.ts
+alwaysApply: false
+---
+
+# Arrow functions
+
+Write TypeScript functions as arrows, including exports and helpers.
+
+```typescript
+export const fill = (text: string, tokens: FillTokens): string =>
+  Mustache.render(text, tokens, undefined, {
+    escape: (value) => String(value),
+  });
+```
+
+Do not use `function` declarations (`function foo()` / `export async function foo()`). Methods on classes may stay method syntax.

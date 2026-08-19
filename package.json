@@ -1,0 +1,31 @@
+{
+  "name": "@deterministic-code/generators-common",
+  "version": "0.0.1",
+  "description": "Shared generator helpers: reader, entries, YAML, specification types, and template fill.",
+  "type": "module",
+  "exports": {
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit"
+  },
+  "dependencies": {
+    "mustache": "^4.2.0",
+    "yaml": "^2.6.0"
+  },
+  "devDependencies": {
+    "@types/mustache": "^4.2.6",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.8.0"
+  }
+}
