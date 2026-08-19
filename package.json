@@ -2,6 +2,10 @@
   "name": "@deterministic-code/generators-common",
   "version": "0.0.1",
   "description": "Shared generator helpers: reader, entries, YAML, specification types, and template fill.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deterministic-code/generators-common.git"
+  },
   "type": "module",
   "exports": {
     "./*": {
