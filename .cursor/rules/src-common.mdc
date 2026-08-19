@@ -1,12 +1,14 @@
 ---
-description: Shared generator helpers live in this package; language packs re-export them.
+description: Shared generator helpers live in this package; language packs import them directly.
 alwaysApply: true
 ---
 
 # generators-common
 
-This package owns helpers used by more than one generator pack (`deterministic-reader`, `generate-context`, `generate-entry`, `fill`, `yaml-node`, `yaml-entry`, `specification`, `compile-filter`, `default-token`).
+This package owns helpers used by more than one generator pack (`deterministic-reader`, `generate-context`, `generate-entry`, `fill`, `yaml-node`, `yaml-entry`, `specification`, `specification-parser`, `compile-filter`, `default-token`). Route path casing is injected via `SpecificationNaming` (`typescriptNaming` vs `rustNaming`).
 
 Do not add language-specific path layout (`paths.ts`) or native type mapping (`type-converter` / `type-converters`). Those stay in each language pack.
+
+Language packs import this package directly. Do not copy these sources into pack `src/common/`.
 
 `generate` is still the only export each language lane has. It takes `GenerateContext`: `{ reader, settings }` where `reader` is `{ read, exists }` (`IDeterministicReader`) and `settings` is the flat string dict.
