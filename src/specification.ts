@@ -1,7 +1,15 @@
 export const DATASOURCE_TYPES_YAML = "datasource_types.yaml";
+export const DATASOURCE_SEEDS_YAML = "datasource_seeds.yaml";
 export const VIEW_TYPES_YAML = "view_types.yaml";
 export const SERVICES_YAML = "services.yaml";
 export const ROUTES_YAML = "routes.yaml";
+
+export type SeedValue = string | number | boolean | null;
+
+export type SeedRow = {
+  id: number;
+  row: Record<string, SeedValue>;
+};
 
 export type DatasourceField = {
   name: string;
@@ -17,12 +25,20 @@ export type DatasourceField = {
   defaultValue?: string | number | boolean | null;
 };
 
+export type DatasourceIndex = {
+  name: string;
+  fields: string[];
+  isUnique: boolean;
+};
+
 export type DatasourceType = {
   name: string;
   datasourceType: string;
   fields: DatasourceField[];
   /** Single-column unique index field names (from `indexes:`). */
   uniqueIndexFields: string[];
+  indexes: DatasourceIndex[];
+  skipMigrations: boolean;
   target?: string | null;
   optimisticConcurrency?: boolean;
 };

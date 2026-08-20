@@ -3,6 +3,7 @@ import { parse } from "yaml";
 import { compileRoutesFilter, compileServicesFilter } from "./compile-filter.ts";
 import type { IDeterministicReader } from "./deterministic-reader.ts";
 import {
+  DATASOURCE_SEEDS_YAML,
   DATASOURCE_TYPES_YAML,
   inheritedIdType,
   parseFieldType,
@@ -13,6 +14,7 @@ import {
   type CustomRouteEntry,
   type CustomServiceEntry,
   type DatasourceField,
+  type DatasourceIndex,
   type DatasourceType,
   type DirectFkDescriptor,
   type M2mDescriptor,
@@ -21,6 +23,8 @@ import {
   type ParsedServices,
   type RouteByField,
   type RouteCandidate,
+  type SeedRow,
+  type SeedValue,
   type ServiceByField,
   type ServiceCandidate,
   type Specification,
@@ -52,6 +56,8 @@ type RawDatasourceType = {
   optimisticConcurrency: boolean | undefined;
   fields: RawDatasourceField[];
   uniqueIndexFields: string[];
+  indexes: DatasourceIndex[];
+  skipMigrations: boolean;
 };
 
 type RawViewField = {
@@ -126,6 +132,27 @@ const specPlural = (name: string): string => {
   return parts.join("_");
 };
 
+const parseSeedKey = (rowKey: string): number => {
+  const m = /^id(\d+)$/.exec(rowKey);
+  if (!m) {
+    throw new Error(
+      `Invalid seed row key "${rowKey}": expected pattern /^id\\d+$/`,
+    );
+  }
+  return Number(m[1]);
+};
+
+const seedCells = (node: YamlNode): Record<string, SeedValue> => {
+  const rec = node.record;
+  if (rec === undefined) return {};
+  const out: Record<string, SeedValue> = {};
+  for (const key of Object.keys(rec)) {
+    const value = node.literal(key);
+    if (value !== undefined) out[key] = value;
+  }
+  return out;
+};
+
 /** Parses deterministic YAML (`datasource_types`, `view_types`, `services`, `routes`) into strict objects. */
 export class SpecificationParser {
   readonly reader: IDeterministicReader | undefined;
@@ -141,12 +168,28 @@ export class SpecificationParser {
       name: t.name,
       datasourceType: t.datasourceType ?? "standard",
       uniqueIndexFields: t.uniqueIndexFields,
+      indexes: t.indexes,
+      skipMigrations: t.skipMigrations,
       ...(t.target !== undefined ? { target: t.target } : {}),
       ...(t.optimisticConcurrency !== undefined
         ? { optimisticConcurrency: t.optimisticConcurrency }
         : {}),
       fields: t.fields.map((field) => this.#resolvedField(field, byName, args.idType)),
     }));
+  }
+
+  parseDatasourceSeeds(yaml: string): Map<string, SeedRow[]> {
+    const byTable = new Map<string, SeedRow[]>();
+    for (const { name, node } of YamlNode.fromYaml(yaml).namedList("seeds")) {
+      byTable.set(
+        name,
+        node.namedItems().map(({ name: rowKey, node: row }) => ({
+          id: parseSeedKey(rowKey),
+          row: seedCells(row),
+        })),
+      );
+    }
+    return byTable;
   }
 
   parseViewTypes(args: {
@@ -263,6 +306,12 @@ export class SpecificationParser {
       yaml: await this.#requireReader().read(DATASOURCE_TYPES_YAML),
       idType,
     });
+  }
+
+  async loadDatasourceSeeds(): Promise<Map<string, SeedRow[]>> {
+    const reader = this.#requireReader();
+    if (!(await reader.exists(DATASOURCE_SEEDS_YAML))) return new Map();
+    return this.parseDatasourceSeeds(await reader.read(DATASOURCE_SEEDS_YAML));
   }
 
   async loadViewTypes(): Promise<ViewType[]> {
@@ -383,7 +432,19 @@ export class SpecificationParser {
   #readDatasourceTypes(root: YamlNode): RawDatasourceType[] {
     return root.namedList("types").map(({ name, node }) => {
       const uniqueIndexFields: string[] = [];
-      for (const { node: indexBody } of node.namedList("indexes")) {
+      const indexes: DatasourceIndex[] = [];
+      for (const { name: indexName, node: indexBody } of node.namedList(
+        "indexes",
+      )) {
+        const rawFields = indexBody.child("fields").value;
+        const fields = Array.isArray(rawFields)
+          ? rawFields.filter((f): f is string => typeof f === "string")
+          : [];
+        indexes.push({
+          name: indexName,
+          fields,
+          isUnique: indexBody.bool("is_unique"),
+        });
         const field = this.#singleColumnUniqueIndexField(indexBody);
         if (field !== undefined && !uniqueIndexFields.includes(field)) {
           uniqueIndexFields.push(field);
@@ -397,6 +458,8 @@ export class SpecificationParser {
           ? node.bool("use_optimistic_concurrency")
           : undefined,
         uniqueIndexFields,
+        indexes,
+        skipMigrations: node.bool("skip_migrations"),
         fields: node.namedList("fields").map(({ name: fname, node: fnode }) => ({
           name: fname,
           type: fnode.str("type"),

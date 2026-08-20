@@ -53,6 +53,28 @@ describe("parseDatasourceTypes", () => {
     assert.equal(types[0]?.fields[0]?.type, "string");
   });
 
+  it("reads skip_migrations and indexes", () => {
+    const types = new SpecificationParser().parseDatasourceTypes({
+      idType: "integer",
+      yaml: `types:
+  - user:
+      skip_migrations: true
+      fields:
+        - email:
+            type: string
+            is_unique: true
+      indexes:
+        - by_role:
+            fields: [role_id]
+            is_unique: false
+`,
+    });
+    assert.equal(types[0]?.skipMigrations, true);
+    assert.deepEqual(types[0]?.indexes, [
+      { name: "by_role", fields: ["role_id"], isUnique: false },
+    ]);
+  });
+
   it("throws when a type-less reference cannot be resolved", () => {
     assert.throws(
       () =>
@@ -109,5 +131,38 @@ describe("primaryKeyFor", () => {
       column: "id",
       idType: "biginteger",
     });
+  });
+});
+
+describe("parseDatasourceSeeds", () => {
+  it("reads named seed rows keyed by idN", () => {
+    const seeds = new SpecificationParser().parseDatasourceSeeds(`seeds:
+  - user:
+      - id1:
+          email: a@example.com
+      - id2:
+          email: b@example.com
+`);
+    assert.deepEqual(seeds.get("user"), [
+      { id: 1, row: { email: "a@example.com" } },
+      { id: 2, row: { email: "b@example.com" } },
+    ]);
+  });
+
+  it("returns empty when seeds: is missing", () => {
+    const seeds = new SpecificationParser().parseDatasourceSeeds("types: []\n");
+    assert.equal(seeds.size, 0);
+  });
+
+  it("throws on a row key that is not idN", () => {
+    assert.throws(
+      () =>
+        new SpecificationParser().parseDatasourceSeeds(`seeds:
+  - user:
+      - row1:
+          email: a@example.com
+`),
+      /Invalid seed row key "row1"/,
+    );
   });
 });
