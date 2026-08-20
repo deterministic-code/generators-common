@@ -23,7 +23,7 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "prepare": "npm run build",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
-    "test": "node --experimental-strip-types --test src/parse-datasource-types.test.ts src/parse-view-types.test.ts src/parse-services.test.ts src/parse-routes.test.ts src/specification-parser.test.ts src/routes-api-converter.test.ts"
+    "test": "node --experimental-strip-types --test src/parser/parse-datasource-types.test.ts src/parser/parse-view-types.test.ts src/parser/parse-services.test.ts src/parser/parse-routes.test.ts src/parser/specification-parser.test.ts src/routes-api-converter.test.ts src/casing-strategy.test.ts"
   },
   "dependencies": {
     "mustache": "^4.2.0",

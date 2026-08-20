@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { memoryReader } from "../deterministic-reader.ts";
 import {
-  SpecificationParser,
+  DATASOURCE_TYPES_YAML,
   entityUsesOptimisticConcurrency,
-} from "./specification-parser.ts";
+  ROUTES_YAML,
+  VIEW_TYPES_YAML,
+} from "./specification.ts";
+import { DeterministicParser } from "./specification-parser.ts";
 
 const DS_YAML = `types:
   - user:
@@ -63,15 +67,23 @@ types:
         - role
 `;
 
-const parseFixture = (routesYaml: string) => {
-  const datasources = new SpecificationParser().parseDatasourceTypes({ yaml: DS_YAML, idType: "integer" });
-  const views = new SpecificationParser().parseViewTypes({ viewYaml: VIEW_YAML, datasourceYaml: DS_YAML });
-  return new SpecificationParser().parseRoutes({ routesYaml, views, datasources });
-};
+const parseFromFiles = (files: Record<string, string>) =>
+  DeterministicParser(memoryReader(files)).parse({
+    "datasource.id_type": "integer",
+  });
+
+const parseFixture = async (routesYaml: string) =>
+  (
+    await parseFromFiles({
+      [DATASOURCE_TYPES_YAML]: DS_YAML,
+      [VIEW_TYPES_YAML]: VIEW_YAML,
+      [ROUTES_YAML]: routesYaml,
+    })
+  ).routes;
 
 describe("parseRoutes", () => {
-  it("seeds GET /api/health as the first custom route when missing", () => {
-    const parsed = parseFixture(`includes:
+  it("seeds GET /api/health as the first custom route when missing", async () => {
+    const parsed = await parseFixture(`includes:
   - view_type_routes:
       filter: 'type inherits datasource_types'
 routes: []`);
@@ -83,8 +95,8 @@ routes: []`);
     );
   });
 
-  it("returns empty candidates when view_type_routes is absent", () => {
-    const parsed = parseFixture(`routes:
+  it("returns empty candidates when view_type_routes is absent", async () => {
+    const parsed = await parseFixture(`routes:
   - getReport:
       method: GET
       path: /api/report
@@ -95,8 +107,8 @@ routes: []`);
     assert.ok(parsed.customs.some((c) => c.name === "getReport"));
   });
 
-  it("filters survivors by view_type_routes and drops target None", () => {
-    const parsed = parseFixture(`includes:
+  it("filters survivors by view_type_routes and drops target None", async () => {
+    const parsed = await parseFixture(`includes:
   - view_type_routes:
       filter: 'type inherits datasource_types'
 routes: []`);
@@ -110,8 +122,8 @@ routes: []`);
     assert.ok(!names.includes("search_result"));
   });
 
-  it("attaches byField routes from shorthand and verbose entries", () => {
-    const parsed = parseFixture(`includes:
+  it("attaches byField routes from shorthand and verbose entries", async () => {
+    const parsed = await parseFixture(`includes:
   - view_type_routes:
       filter: 'type == "user"'
 routes:
@@ -144,8 +156,8 @@ routes:
     );
   });
 
-  it("splits custom routes from by-field entries", () => {
-    const parsed = parseFixture(`includes:
+  it("splits custom routes from by-field entries", async () => {
+    const parsed = await parseFixture(`includes:
   - view_type_routes:
       filter: 'type inherits datasource_types'
 routes:
@@ -161,8 +173,8 @@ routes:
     assert.ok(!parsed.customs.some((c) => c.name === "get_users_by_email"));
   });
 
-  it("excludes direct-FK combined children from top-level candidates", () => {
-    const parsed = parseFixture(`includes:
+  it("excludes direct-FK combined children from top-level candidates", async () => {
+    const parsed = await parseFixture(`includes:
   - view_type_routes:
       filter: 'type inherits datasource_types'
 combined_routes:
@@ -176,8 +188,8 @@ routes: []`);
     assert.ok(parsed.candidates.some((c) => c.name === "project"));
   });
 
-  it("collects direct-fk nested descriptors with default parent paths", () => {
-    const parsed = parseFixture(`includes:
+  it("collects direct-fk nested descriptors with default parent paths", async () => {
+    const parsed = await parseFixture(`includes:
   - view_type_routes:
       filter: 'type inherits datasource_types'
 combined_routes:
@@ -199,7 +211,7 @@ routes: []`);
     assert.equal(desc.segmentTail, "project_settings");
   });
 
-  it("does not mark m2m via/target children as childrenOnly", () => {
+  it("does not mark m2m via/target children as childrenOnly", async () => {
     const m2mDs = `types:
   - organization:
       fields: []
@@ -217,14 +229,14 @@ routes: []`);
             type: number
             references: tag.id
 `;
-    const m2mView = `includes:
+    const parsed = (
+      await parseFromFiles({
+        [DATASOURCE_TYPES_YAML]: m2mDs,
+        [VIEW_TYPES_YAML]: `includes:
   - datasource_types:
       include: "*"
-types: []`;
-    const datasources = new SpecificationParser().parseDatasourceTypes({ yaml: m2mDs, idType: "integer" });
-    const views = new SpecificationParser().parseViewTypes({ viewYaml: m2mView, datasourceYaml: m2mDs });
-    const parsed = new SpecificationParser().parseRoutes({
-      routesYaml: `includes:
+types: []`,
+        [ROUTES_YAML]: `includes:
   - view_type_routes:
       filter: 'type inherits datasource_types'
 combined_routes:
@@ -234,9 +246,8 @@ combined_routes:
             via: org_tag
             target: tag
 routes: []`,
-      views,
-      datasources,
-    });
+      })
+    ).routes;
 
     assert.ok(!parsed.childrenOnly.has("tag"));
   });
@@ -287,10 +298,10 @@ describe("entityUsesOptimisticConcurrency", () => {
 });
 
 describe("parseDatasourceTypes target and optimisticConcurrency", () => {
-  it("parses target and use_optimistic_concurrency onto DatasourceType", () => {
-    const types = new SpecificationParser().parseDatasourceTypes({
-      idType: "integer",
-      yaml: `types:
+  it("parses target and use_optimistic_concurrency onto DatasourceType", async () => {
+    const types = (
+      await parseFromFiles({
+        [DATASOURCE_TYPES_YAML]: `types:
   - sink:
       target: None
       fields:
@@ -302,7 +313,8 @@ describe("parseDatasourceTypes target and optimisticConcurrency", () => {
         - name:
             type: string
 `,
-    });
+      })
+    ).datasourceTypes;
     assert.equal(types[0]?.target, "None");
     assert.equal(types[1]?.optimisticConcurrency, false);
   });

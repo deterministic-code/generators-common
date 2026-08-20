@@ -1,5 +1,5 @@
 import pluralize from "pluralize";
-import { parse } from "yaml";
+import { parse as parseYaml } from "yaml";
 import type { GenerateContext } from "./generate-context.ts";
 import {
   primaryKeyFor,
@@ -14,8 +14,8 @@ import {
   type ShapedView,
   type ViewField,
   type ViewType,
-} from "./specification.ts";
-import { SpecificationParser } from "./specification-parser.ts";
+} from "./parser/specification.ts";
+import { DeterministicParser } from "./parser/specification-parser.ts";
 import {
   ROUTES_API_VERSION,
   type RoutesApiBody,
@@ -593,7 +593,7 @@ const parentCrudEntries = (
 
 const eagerRoots = (routesYaml: string): Set<string> => {
   const out = new Set<string>();
-  for (const [, block] of namedEntries(rec(parse(routesYaml)).includes)) {
+  for (const [, block] of namedEntries(rec(parseYaml(routesYaml)).includes)) {
     const paths = rec(block).eager_write_path;
     if (!Array.isArray(paths)) continue;
     for (const path of paths) {
@@ -606,7 +606,7 @@ const eagerRoots = (routesYaml: string): Set<string> => {
 
 const combinedParentsWithRoute = (routesYaml: string): Map<string, string> => {
   const out = new Map<string, string>();
-  for (const [name, body] of namedEntries(rec(parse(routesYaml)).combined_routes)) {
+  for (const [name, body] of namedEntries(rec(parseYaml(routesYaml)).combined_routes)) {
     const route = rec(body).route;
     if (typeof route === "string") out.set(name, route);
   }
@@ -672,16 +672,13 @@ const parseRoutesApi = (args: {
 export const loadRoutesApi = async (
   ctx: GenerateContext,
 ): Promise<RoutesApiDoc> => {
-  const parser = new SpecificationParser(ctx.reader);
-  const idType = datasourceIdType(ctx.settings);
-  const [parsed, views, routesYaml] = await Promise.all([
-    parser.loadRoutes({ idType }),
-    parser.loadViewTypes(),
+  const [spec, routesYaml] = await Promise.all([
+    DeterministicParser(ctx.reader).parse(ctx.settings),
     ctx.reader.read(ROUTES_YAML),
   ]);
   return parseRoutesApi({
-    parsed,
-    views,
+    parsed: spec.routes,
+    views: spec.viewTypes,
     settings: ctx.settings,
     routesYaml,
   });
