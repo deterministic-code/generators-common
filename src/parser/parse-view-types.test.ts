@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { SpecificationParser } from "./specification-parser.ts";
+import { memoryReader } from "../deterministic-reader.ts";
+import { DATASOURCE_TYPES_YAML, VIEW_TYPES_YAML } from "./specification.ts";
+import { DeterministicParser } from "./specification-parser.ts";
 
 const DS = `types:
   - user:
@@ -30,10 +32,33 @@ const DS = `types:
             type: string
 `;
 
+const parseViews = (viewYaml: string, datasourceYaml?: string) =>
+  DeterministicParser(
+    memoryReader({
+      [VIEW_TYPES_YAML]: viewYaml,
+      ...(datasourceYaml !== undefined
+        ? { [DATASOURCE_TYPES_YAML]: datasourceYaml }
+        : {}),
+    }),
+  )
+    .parse({ "datasource.id_type": "integer" })
+    .then((spec) => spec.viewTypes);
+
+const parseExpandedViews = (viewYaml: string, datasourceYaml?: string) =>
+  DeterministicParser(
+    memoryReader({
+      [VIEW_TYPES_YAML]: viewYaml,
+      ...(datasourceYaml !== undefined
+        ? { [DATASOURCE_TYPES_YAML]: datasourceYaml }
+        : {}),
+    }),
+  )
+    .parse({ "datasource.id_type": "integer" })
+    .then((spec) => spec.expandedViewTypes);
+
 describe("parseViewTypes", () => {
-  it("reads shaped and union views", () => {
-    const views = new SpecificationParser().parseViewTypes({
-      viewYaml: `types:
+  it("reads shaped and union views", async () => {
+    const views = await parseViews(`types:
   - user_summary:
       inherits: datasource_types.user
       omit:
@@ -50,8 +75,7 @@ describe("parseViewTypes", () => {
       one_of:
         - card_payment
         - cash_payment
-`,
-    });
+`);
     assert.deepEqual(
       views.map((v) => v.name),
       ["user_summary", "payment"],
@@ -100,15 +124,15 @@ describe("parseViewTypes", () => {
     });
   });
 
-  it("pass-throughs included datasource types and derives update variants", () => {
-    const views = new SpecificationParser().parseViewTypes({
-      viewYaml: `includes:
+  it("pass-throughs included datasource types and derives update variants", async () => {
+    const views = await parseViews(
+      `includes:
   - datasource_types:
       include: "*"
 types: []
 `,
-      datasourceYaml: DS,
-    });
+      DS,
+    );
     assert.deepEqual(
       views.map((v) => v.name),
       ["user", "update_user", "role", "tag", "update_tag", "code_entity", "update_code_entity", "create_code_entity"],
@@ -128,32 +152,32 @@ types: []
     assert.ok(updateCode.omit.includes("code"));
   });
 
-  it("skips update variants for readonly-lookup and already-prefixed names", () => {
-    const views = new SpecificationParser().parseViewTypes({
-      viewYaml: `types:
+  it("skips update variants for readonly-lookup and already-prefixed names", async () => {
+    const views = await parseViews(
+      `types:
   - role:
       inherits: datasource_types.role
   - update_user:
       inherits: datasource_types.user
 `,
-      datasourceYaml: DS,
-    });
+      DS,
+    );
     assert.deepEqual(
       views.map((v) => v.name),
       ["role", "update_user"],
     );
   });
 
-  it("auto-enriches FK columns on inherited views", () => {
-    const views = new SpecificationParser().parseViewTypes({
-      viewYaml: `includes:
+  it("auto-enriches FK columns on inherited views", async () => {
+    const views = await parseViews(
+      `includes:
   - datasource_types:
       include: user
       auto_enrich: true
 types: []
 `,
-      datasourceYaml: DS,
-    });
+      DS,
+    );
     const user = views.find((v) => v.name === "user");
     assert.equal(user?.kind, "shaped");
     if (user?.kind !== "shaped") return;
@@ -171,16 +195,16 @@ types: []
     );
   });
 
-  it("filters pass-throughs with the datasource_types.filter expression", () => {
-    const views = new SpecificationParser().parseViewTypes({
-      viewYaml: `includes:
+  it("filters pass-throughs with the datasource_types.filter expression", async () => {
+    const views = await parseViews(
+      `includes:
   - datasource_types:
       include: "*"
       filter: type.datasource_type != "readonly-lookup"
 types: []
 `,
-      datasourceYaml: DS,
-    });
+      DS,
+    );
     assert.equal(
       views.some((v) => v.name === "role"),
       false,
@@ -191,33 +215,80 @@ types: []
     );
   });
 
-  it("throws when a datasource_types include is present without datasource YAML", () => {
-    assert.throws(
+  it("throws when a datasource_types include is present without datasource YAML", async () => {
+    await assert.rejects(
       () =>
-        new SpecificationParser().parseViewTypes({
-          viewYaml: `includes:
+        parseViews(`includes:
   - datasource_types:
       include: "*"
 types: []
-`,
-        }),
+`),
       /no datasource_types\.yaml was provided/,
     );
   });
 
-  it("rejects an invalid datasource_types.filter expression", () => {
-    assert.throws(
+  it("rejects an invalid datasource_types.filter expression", async () => {
+    await assert.rejects(
       () =>
-        new SpecificationParser().parseViewTypes({
-          viewYaml: `includes:
+        parseViews(
+          `includes:
   - datasource_types:
       include: "*"
       filter: type.datasource_type ===
 types: []
 `,
-          datasourceYaml: DS,
-        }),
+          DS,
+        ),
       /datasource_types.filter is not a valid expression/,
     );
+  });
+});
+
+describe("expandedViewTypes", () => {
+  it("inlines inherited StandardTable columns and drops omitted and enriched FKs", async () => {
+    const views = await parseExpandedViews(
+      `includes:
+  - datasource_types:
+      include: user
+      auto_enrich: true
+types:
+  - user_summary:
+      inherits: datasource_types.user
+      omit:
+        - email
+      fields:
+        - display_name:
+            type: string
+`,
+      DS,
+    );
+    const user = views.find((v) => v.name === "user");
+    assert.equal(user?.kind, "shaped");
+    if (user?.kind !== "shaped") return;
+    assert.deepEqual(
+      user.fields.map((f) => f.name),
+      ["id", "uuid", "created", "updated", "email", "role_name"],
+    );
+    const summary = views.find((v) => v.name === "user_summary");
+    assert.equal(summary?.kind, "shaped");
+    if (summary?.kind !== "shaped") return;
+    assert.deepEqual(
+      summary.fields.map((f) => f.name),
+      ["id", "uuid", "created", "updated", "display_name", "role_name"],
+    );
+  });
+
+  it("leaves union views unchanged", async () => {
+    const views = await parseExpandedViews(`types:
+  - payment:
+      one_of:
+        - card_payment
+        - cash_payment
+`);
+    assert.deepEqual(views[0], {
+      kind: "union",
+      name: "payment",
+      members: ["card_payment", "cash_payment"],
+    });
   });
 });

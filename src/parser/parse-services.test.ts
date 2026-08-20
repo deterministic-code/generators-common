@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { SpecificationParser } from "./specification-parser.ts";
+import { memoryReader } from "../deterministic-reader.ts";
+import {
+  DATASOURCE_TYPES_YAML,
+  ROUTES_YAML,
+  SERVICES_YAML,
+  VIEW_TYPES_YAML,
+} from "./specification.ts";
+import { DeterministicParser } from "./specification-parser.ts";
 
 const serviceClassName = (entity: string) => `${entity}_service`;
 
@@ -32,7 +39,7 @@ types:
         - role_id
 `;
 
-const SERVICES_YAML = `includes:
+const SERVICES_YAML_DOC = `includes:
   - view_type_services:
       filter: 'type is view_type || type is datasource_type'
 services:
@@ -40,7 +47,7 @@ services:
     module: ./services/custom/report-service
 `;
 
-const ROUTES_YAML = `routes:
+const ROUTES_YAML_DOC = `routes:
   - getReport:
       method: GET
       path: /api/report
@@ -48,16 +55,25 @@ const ROUTES_YAML = `routes:
       serviceMethod: run
 `;
 
+const parseServices = (
+  servicesYaml: string,
+  extra: Record<string, string> = {},
+) =>
+  DeterministicParser(
+    memoryReader({
+      [DATASOURCE_TYPES_YAML]: DS_YAML,
+      [VIEW_TYPES_YAML]: VIEW_YAML,
+      [SERVICES_YAML]: servicesYaml,
+      ...extra,
+    }),
+  )
+    .parse({ "datasource.id_type": "integer" }, { serviceClassName })
+    .then((spec) => spec.services);
+
 describe("parseServices", () => {
-  it("seeds HealthCheckService, builds generics, and wires custom methods", () => {
-    const datasources = new SpecificationParser().parseDatasourceTypes({ yaml: DS_YAML, idType: "integer" });
-    const views = new SpecificationParser().parseViewTypes({ viewYaml: VIEW_YAML, datasourceYaml: DS_YAML });
-    const parsed = new SpecificationParser().parseServices({
-      servicesYaml: SERVICES_YAML,
-      views,
-      datasources,
-      routesYaml: ROUTES_YAML,
-      serviceClassName,
+  it("seeds HealthCheckService, builds generics, and wires custom methods", async () => {
+    const parsed = await parseServices(SERVICES_YAML_DOC, {
+      [ROUTES_YAML]: ROUTES_YAML_DOC,
     });
 
     assert.equal(parsed.customs[0]?.name, "HealthCheckService");
@@ -81,21 +97,14 @@ describe("parseServices", () => {
     );
   });
 
-  it("suppresses a generic when a custom stub uses the same class name", () => {
-    const datasources = new SpecificationParser().parseDatasourceTypes({ yaml: DS_YAML, idType: "integer" });
-    const views = new SpecificationParser().parseViewTypes({ viewYaml: VIEW_YAML, datasourceYaml: DS_YAML });
-    const parsed = new SpecificationParser().parseServices({
-      servicesYaml: `includes:
+  it("suppresses a generic when a custom stub uses the same class name", async () => {
+    const parsed = await parseServices(`includes:
   - view_type_services:
       filter: 'type == "user"'
 services:
   - name: user_service
     module: ./services/custom/user_service
-`,
-      views,
-      datasources,
-      serviceClassName,
-    });
+`);
     assert.equal(parsed.generics.length, 0);
     assert.ok(parsed.customs.some((c) => c.name === "user_service"));
   });

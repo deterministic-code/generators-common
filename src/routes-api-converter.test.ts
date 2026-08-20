@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { memoryReader } from "./deterministic-reader.ts";
 import { loadRoutesApi } from "./routes-api-converter.ts";
-import { SpecificationParser } from "./specification-parser.ts";
+import { DeterministicParser } from "./parser/specification-parser.ts";
 
 const viewPassThrough = `includes:
   - datasource_types:
@@ -200,17 +200,20 @@ routes: []
     assert.ok(doc.components.search_result?.oneOf);
   });
 
-  it("reads optimistic concurrency from datasource types", () => {
-    const types = new SpecificationParser().parseDatasourceTypes({
-      yaml: `types:
+  it("reads optimistic concurrency from datasource types", async () => {
+    const types = (
+      await DeterministicParser(
+        memoryReader({
+          "datasource_types.yaml": `types:
   - project:
       use_optimistic_concurrency: true
       fields:
         - name:
             type: string
 `,
-      idType: "integer",
-    });
+        }),
+      ).parse({ "datasource.id_type": "integer" })
+    ).datasourceTypes;
     assert.equal(types[0]?.optimisticConcurrency, true);
   });
 });
