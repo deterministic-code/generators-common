@@ -1,7 +1,7 @@
 import { parse } from "yaml";
 import { isFiniteInt, isFiniteNumber, isRecord } from "./yaml-entry.ts";
 
-export type YamlLiteral = string | number | boolean | null;
+type YamlLiteral = string | number | boolean | null;
 
 /** Typed cursor over a YAML value. Missing keys are empty nodes, not throws. */
 export class YamlNode {

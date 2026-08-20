@@ -44,7 +44,7 @@ routes: []
       serviceClassName,
     });
     const user = spec.datasources.find((t) => t.name === "user");
-    assert.equal(user?.fields.find((f) => f.name === "role_id")?.type, "number");
+    assert.equal(user?.fields.find((f) => f.name === "role_id")?.type, "integer");
     assert.ok(spec.views.some((v) => v.name === "user"));
     assert.ok(spec.services.generics.some((g) => g.name === "user"));
     assert.equal(spec.routes.customs[0]?.name, "getHealth");

@@ -1,9 +1,5 @@
 import pluralize from "pluralize";
 import { parse } from "yaml";
-import {
-  typescriptNaming,
-  type SpecificationNaming,
-} from "./specification-naming.ts";
 import { compileRoutesFilter, compileServicesFilter } from "./compile-filter.ts";
 import type { IDeterministicReader } from "./deterministic-reader.ts";
 import {
@@ -35,12 +31,6 @@ import { isRecord } from "./yaml-entry.ts";
 import { YamlNode } from "./yaml-node.ts";
 
 export * from "./specification.ts";
-export {
-  csharpNaming,
-  rustNaming,
-  typescriptNaming,
-  type SpecificationNaming,
-} from "./specification-naming.ts";
 
 type RawDatasourceField = {
   name: string;
@@ -123,17 +113,25 @@ const VERB_TO_METHODS: Record<string, string[]> = {
   delete: ["DELETE"],
 };
 
+const specName = (raw: string): string => raw.replace(/-/g, "_");
+
+const shorthandField = (raw: string): string =>
+  specName(raw)
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase();
+
+const specPlural = (name: string): string => {
+  const parts = specName(name).split("_");
+  parts[parts.length - 1] = pluralize.plural(parts[parts.length - 1]!);
+  return parts.join("_");
+};
+
 /** Parses deterministic YAML (`datasource_types`, `view_types`, `services`, `routes`) into strict objects. */
 export class SpecificationParser {
   readonly reader: IDeterministicReader | undefined;
-  readonly #naming: SpecificationNaming;
 
-  constructor(
-    reader?: IDeterministicReader,
-    naming: SpecificationNaming = typescriptNaming,
-  ) {
+  constructor(reader?: IDeterministicReader) {
     this.reader = reader;
-    this.#naming = naming;
   }
 
   parseDatasourceTypes(args: { yaml: string; idType: string }): DatasourceType[] {
@@ -819,21 +817,8 @@ export class SpecificationParser {
     return [...byName.values()];
   }
 
-  #rewriteParentPath(rawPath: string, parentName: string): string {
-    return rawPath.replace(
-      /\{([A-Za-z_][A-Za-z0-9_]*)\}/g,
-      (_match, name: string) =>
-        name === "id"
-          ? `:${this.#naming.paramName(parentName)}`
-          : `:${name}`,
-    );
-  }
-
   #defaultParentBasePath(parentName: string): string {
-    return this.#rewriteParentPath(
-      `/api/${this.#naming.pluralPath(parentName)}/{id}`,
-      parentName,
-    );
+    return `/api/${specPlural(parentName)}/{id}`;
   }
 
   #segmentTailOf(segment: string): string {
@@ -841,7 +826,7 @@ export class SpecificationParser {
   }
 
   #defaultChildSegment(name: string): string {
-    return `/${this.#naming.pluralPath(name)}`;
+    return `/${specPlural(name)}`;
   }
 
   #findHealthRouteIndex(routes: unknown[]): number {
@@ -916,15 +901,15 @@ export class SpecificationParser {
       );
     }
     const pluralSnake = body.slice(0, splitIdx);
-    const camelField = body.slice(splitIdx + "_by_".length);
-    if (!pluralSnake || !camelField) {
+    const fieldToken = body.slice(splitIdx + "_by_".length);
+    if (!pluralSnake || !fieldToken) {
       throw new Error(
         `parseByFieldEntry: route key \`${token}\` has empty entity or field around \`_by_\``,
       );
     }
     return {
       entity: this.#singularizeLastToken(pluralSnake),
-      byField: this.#naming.byField(camelField),
+      byField: shorthandField(fieldToken),
     };
   }
 
@@ -1054,11 +1039,11 @@ export class SpecificationParser {
       for (const child of def?.combined_types ?? []) {
         let childName: string;
         if (typeof child === "string") {
-          childName = this.#naming.entityName(child);
+          childName = specName(child);
         } else {
           const [rawName, childDef] = Object.entries(child)[0]!;
           if (childDef && (childDef.via || childDef.target)) continue;
-          childName = this.#naming.entityName(rawName);
+          childName = specName(rawName);
         }
         if (parents.has(childName)) continue;
         const childDs = dsByName.get(childName);
@@ -1145,7 +1130,7 @@ export class SpecificationParser {
   ): NormalizedChild {
     if (typeof child === "string") {
       return {
-        name: this.#naming.entityName(child),
+        name: specName(child),
         via: null,
         target: null,
         route: null,
@@ -1153,7 +1138,7 @@ export class SpecificationParser {
     }
     const [rawName, def] = Object.entries(child)[0]!;
     return {
-      name: this.#naming.entityName(rawName),
+      name: specName(rawName),
       via: def && typeof def.via === "string" ? def.via : null,
       target: def && typeof def.target === "string" ? def.target : null,
       route: def && typeof def.route === "string" ? def.route : null,
@@ -1200,10 +1185,10 @@ export class SpecificationParser {
       kind: "m2m",
       parent: parentName,
       parentBasePath,
-      parentParam: this.#naming.paramName(parentName),
+      parentParam: parentName,
       junction: args.junction,
       target: args.target,
-      targetParam: this.#naming.paramName(args.target),
+      targetParam: args.target,
       parentFkField: args.parentFkField,
       childFkField: args.childFkField,
       segment,
@@ -1221,7 +1206,7 @@ export class SpecificationParser {
       kind: "direct-fk",
       parent: parentName,
       parentBasePath,
-      parentParam: this.#naming.paramName(parentName),
+      parentParam: parentName,
       child: { name: args.childName },
       fkColumn: args.fkColumn,
       segment,
@@ -1238,7 +1223,7 @@ export class SpecificationParser {
       const def = (node.record ?? {}) as CombinedRouteDef;
       const parentBasePath =
         typeof def.route === "string" && def.route.length > 0
-          ? this.#rewriteParentPath(def.route, parentName)
+          ? def.route
           : this.#defaultParentBasePath(parentName);
       for (const rawChild of def.combined_types ?? []) {
         const child = this.#normalizeCombinedChild(rawChild);

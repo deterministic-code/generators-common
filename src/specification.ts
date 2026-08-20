@@ -231,7 +231,7 @@ export const uniqueLookupFields = (
 };
 
 const ID_FIELD_TYPE: Record<string, string> = {
-  integer: "number",
+  integer: "integer",
   biginteger: "biginteger",
   uuid: "uuid",
   string: "string",
@@ -247,7 +247,7 @@ export type SystemColumn = {
   isNullable: boolean;
 };
 
-export const systemColumns = (idType: string): SystemColumn[] => [
+const systemColumns = (idType: string): SystemColumn[] => [
   { name: "id", type: inheritedIdType(idType), isNullable: false },
   ...(idType !== "uuid"
     ? [{ name: "uuid", type: "uuid", isNullable: false }]
@@ -283,44 +283,4 @@ export const entityUsesOptimisticConcurrency = (
     return table.optimisticConcurrency;
   }
   return globalFlag === true;
-};
-
-type OccDatasourceDoc = {
-  types?: Array<
-    Record<
-      string,
-      {
-        datasource_type?: string | null;
-        use_optimistic_concurrency?: boolean;
-      }
-    >
-  >;
-};
-
-/** entityName → effective OCC from a raw datasource_types doc. */
-export const optimisticConcurrencyByEntity = (
-  data: OccDatasourceDoc | null | undefined,
-  globalFlag: boolean,
-): Map<string, boolean> => {
-  const out = new Map<string, boolean>();
-  const types = Array.isArray(data?.types) ? data.types : [];
-  for (const entry of types) {
-    const pair = Object.entries(entry)[0];
-    if (!pair) continue;
-    const [name, def] = pair;
-    out.set(
-      name,
-      entityUsesOptimisticConcurrency(
-        {
-          datasourceType: def?.datasource_type,
-          optimisticConcurrency:
-            def?.use_optimistic_concurrency === undefined
-              ? undefined
-              : def.use_optimistic_concurrency === true,
-        },
-        globalFlag,
-      ),
-    );
-  }
-  return out;
 };

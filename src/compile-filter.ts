@@ -82,7 +82,7 @@ const compileExpr = (s: string, contextLabel: string): CompiledExpr => {
   }
 };
 
-export const compileFilter = (
+const compileFilter = (
   filterExpr: string | null | undefined,
   contextLabel = "filter",
 ): FilterPredicate => {

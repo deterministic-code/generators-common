@@ -12,7 +12,7 @@ type Source = {
   exists: (name: string) => Promise<boolean>;
 };
 
-export class DeterministicReader implements IDeterministicReader {
+class DeterministicReader implements IDeterministicReader {
   #source: Source;
 
   constructor(source: Source) {

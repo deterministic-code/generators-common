@@ -5,7 +5,7 @@ alwaysApply: true
 
 # generators-common
 
-This package owns helpers used by more than one generator pack (`deterministic-reader`, `generate-context`, `generate-entry`, `fill`, `yaml-node`, `yaml-entry`, `specification`, `specification-parser`, `compile-filter`, `default-token`). Route path casing is injected via `SpecificationNaming` (`typescriptNaming` vs `rustNaming`).
+This package owns helpers used by more than one generator pack (`deterministic-reader`, `generate-context`, `generate-entry`, `fill`, `yaml-node`, `yaml-entry`, `specification`, `specification-parser`, `compile-filter`, `default-token`, `routes-api`, `routes-api-converter`). The specification parser and routes-api IR are dialect-agnostic (YAML names, snake paths, `{param}`). HTTP param/segment casing for generated app code stays in each language pack (`paths.ts`, TypeScript runtime `iterateCombinedRoutes`).
 
 Do not add language-specific path layout (`paths.ts`) or native type mapping (`type-converter` / `type-converters`). Those stay in each language pack.
 

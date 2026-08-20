@@ -2,7 +2,7 @@
 export const EMPTY_UUID = "00000000-0000-0000-0000-000000000000";
 
 /** Field types whose `default_value` renders as a bare numeric literal (no quoting) in every target. */
-export const NUMERIC_LITERAL_TYPES = new Set([
+const NUMERIC_LITERAL_TYPES = new Set([
   "number",
   "integer",
   "smallinteger",

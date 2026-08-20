@@ -28,7 +28,7 @@ describe("parseDatasourceTypes", () => {
     assert.deepEqual(types[0]?.fields, [
       {
         name: "role_id",
-        type: "number",
+        type: "integer",
         isNullable: false,
         references: "role.id",
       },

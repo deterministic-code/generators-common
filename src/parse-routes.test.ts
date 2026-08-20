@@ -3,7 +3,6 @@ import { describe, it } from "node:test";
 import {
   SpecificationParser,
   entityUsesOptimisticConcurrency,
-  rustNaming,
 } from "./specification-parser.ts";
 
 const DS_YAML = `types:
@@ -192,8 +191,8 @@ routes: []`);
     assert.equal(desc?.kind, "direct-fk");
     if (desc?.kind !== "direct-fk") return;
     assert.equal(desc.parent, "project");
-    assert.equal(desc.parentParam, "projectId");
-    assert.equal(desc.parentBasePath, "/api/projects/:projectId");
+    assert.equal(desc.parentParam, "project");
+    assert.equal(desc.parentBasePath, "/api/projects/{id}");
     assert.equal(desc.child.name, "project_setting");
     assert.equal(desc.fkColumn, "project_id");
     assert.equal(desc.segment, "/project_settings");
@@ -306,39 +305,6 @@ describe("parseDatasourceTypes target and optimisticConcurrency", () => {
     });
     assert.equal(types[0]?.target, "None");
     assert.equal(types[1]?.optimisticConcurrency, false);
-  });
-});
-
-describe("parseRoutes rustNaming", () => {
-  it("uses kebab child segments and camel parent params", () => {
-    const parser = new SpecificationParser(undefined, rustNaming);
-    const datasources = parser.parseDatasourceTypes({
-      yaml: DS_YAML,
-      idType: "integer",
-    });
-    const views = parser.parseViewTypes({
-      viewYaml: VIEW_YAML,
-      datasourceYaml: DS_YAML,
-    });
-    const parsed = parser.parseRoutes({
-      routesYaml: `includes:
-  - view_type_routes:
-      filter: 'type inherits datasource_types'
-combined_routes:
-  - project:
-      combined_types:
-        - project_setting
-routes: []`,
-      views,
-      datasources,
-    });
-    const desc = parsed.nested[0];
-    assert.equal(desc?.kind, "direct-fk");
-    if (desc?.kind !== "direct-fk") return;
-    assert.equal(desc.parentParam, "projectId");
-    assert.equal(desc.parentBasePath, "/api/projects/:projectId");
-    assert.equal(desc.segment, "/project-settings");
-    assert.equal(desc.segmentTail, "project-settings");
   });
 });
 

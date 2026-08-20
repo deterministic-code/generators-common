@@ -8,24 +8,24 @@
   },
   "type": "module",
   "exports": {
+    "./package.json": "./package.json",
     "./*": {
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js"
-    },
-    "./package.json": "./package.json"
+    }
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "tsconfig.build.json"
   ],
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "prepare": "npm run build",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
-    "test": "node --experimental-strip-types --test src/parse-datasource-types.test.ts src/parse-view-types.test.ts src/parse-services.test.ts src/parse-routes.test.ts src/specification-parser.test.ts"
+    "test": "node --experimental-strip-types --test src/parse-datasource-types.test.ts src/parse-view-types.test.ts src/parse-services.test.ts src/parse-routes.test.ts src/specification-parser.test.ts src/routes-api-converter.test.ts"
   },
   "dependencies": {
-    "change-case": "^5.4.4",
     "mustache": "^4.2.0",
     "pluralize": "^8.0.0",
     "yaml": "^2.6.0"
