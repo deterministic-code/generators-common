@@ -10,6 +10,7 @@ import {
   expandViewTypes,
   inheritedIdType,
   parseFieldType,
+  resolvedProjectIdType,
   ROUTES_YAML,
   SERVICES_YAML,
   uniqueLookupFields,
@@ -178,7 +179,9 @@ class Parser {
     opts?: { serviceClassName?: (entity: string) => string },
   ): Promise<IDeterministic> {
     const reader = this.#reader;
-    const idType = settings["datasource.id_type"] ?? "integer";
+    const idType = resolvedProjectIdType(
+      settings["datasource.id_type"] ?? "integer",
+    );
     const serviceClassName = opts?.serviceClassName ?? ((entity) => entity);
     const [hasDs, hasSeeds, hasViews, hasServices, hasRoutes] =
       await Promise.all([

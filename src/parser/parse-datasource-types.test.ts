@@ -4,7 +4,6 @@ import { memoryReader } from "../deterministic-reader.ts";
 import {
   DATASOURCE_SEEDS_YAML,
   DATASOURCE_TYPES_YAML,
-  primaryKeyFor,
 } from "./specification.ts";
 import { DeterministicParser } from "./specification-parser.ts";
 
@@ -105,50 +104,37 @@ describe("parseDatasourceTypes", () => {
   });
 });
 
-describe("primaryKeyFor", () => {
+describe("expanded datasource primary key", () => {
   it("defaults to id and the project idType", async () => {
-    const types = (
-      await parseSpec(
-        {
-          [DATASOURCE_TYPES_YAML]: `types:
+    const spec = await parseSpec(
+      {
+        [DATASOURCE_TYPES_YAML]: `types:
   - user:
       fields:
         - email:
             type: string
 `,
-        },
-        "uuid",
-      )
-    ).datasourceTypes;
-    assert.deepEqual(primaryKeyFor("user", types, "uuid"), {
-      column: "id",
-      idType: "uuid",
-    });
+      },
+      "uuid",
+    );
+    const user = spec.expandedDatasourceTypes.find((t) => t.name === "user");
+    assert.equal(user?.primaryKeyColumn, "id");
+    assert.equal(user?.fields.find((f) => f.name === "id")?.type, "uuid");
   });
 
   it("uses a custom non-id primary_key field", async () => {
-    const types = (
-      await parseSpec({
-        [DATASOURCE_TYPES_YAML]: `types:
+    const spec = await parseSpec({
+      [DATASOURCE_TYPES_YAML]: `types:
   - parent:
       fields:
         - code:
             type: string
             primary_key: true
 `,
-      })
-    ).datasourceTypes;
-    assert.deepEqual(primaryKeyFor("parent", types, "integer"), {
-      column: "code",
-      idType: "string",
     });
-  });
-
-  it("falls back when the entity is missing", () => {
-    assert.deepEqual(primaryKeyFor("missing", [], "biginteger"), {
-      column: "id",
-      idType: "biginteger",
-    });
+    const parent = spec.expandedDatasourceTypes.find((t) => t.name === "parent");
+    assert.equal(parent?.primaryKeyColumn, "code");
+    assert.equal(parent?.fields.find((f) => f.name === "code")?.type, "string");
   });
 });
 
@@ -245,8 +231,16 @@ describe("expandedDatasourceTypes", () => {
       "uuid",
     );
     assert.deepEqual(
-      spec.expandedDatasourceTypes[0]?.fields.map((f) => f.name),
-      ["id", "created", "updated", "email"],
+      spec.expandedDatasourceTypes[0]?.fields.map((f) => ({
+        name: f.name,
+        type: f.type,
+      })),
+      [
+        { name: "id", type: "uuid" },
+        { name: "created", type: "datetime" },
+        { name: "updated", type: "datetime" },
+        { name: "email", type: "string" },
+      ],
     );
   });
 

@@ -269,6 +269,8 @@ types:
       user.fields.map((f) => f.name),
       ["id", "uuid", "created", "updated", "email", "role_name"],
     );
+    assert.equal(user.fields.find((f) => f.name === "id")?.type, "integer");
+    assert.equal(user.fields.find((f) => f.name === "created")?.type, "datetime");
     const summary = views.find((v) => v.name === "user_summary");
     assert.equal(summary?.kind, "shaped");
     if (summary?.kind !== "shaped") return;

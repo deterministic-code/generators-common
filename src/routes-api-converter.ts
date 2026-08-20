@@ -2,11 +2,10 @@ import pluralize from "pluralize";
 import { parse as parseYaml } from "yaml";
 import type { GenerateContext } from "./generate-context.ts";
 import {
-  primaryKeyFor,
   ROUTES_YAML,
   type CustomRouteEntry,
   type DatasourceField,
-  type DatasourceType,
+  type ExpandedDatasourceType,
   type NestedRouteDescriptor,
   type ParsedRoutes,
   type RouteByField,
@@ -37,9 +36,6 @@ const EAGER_SUFFIXES = [
 ] as const;
 const REF_PREFIX = "#/components/schemas/";
 
-const datasourceIdType = (settings: Record<string, string>): string =>
-  settings["datasource.id_type"] ?? "integer";
-
 const specName = (raw: string): string => raw.replace(/-/g, "_");
 
 const specPlural = (name: string): string => {
@@ -56,17 +52,17 @@ const pascalIdent = (name: string): string => {
   return camel.length === 0 ? camel : camel[0]!.toUpperCase() + camel.slice(1);
 };
 
+const pkTypeOf = (
+  entity: string,
+  datasources: ExpandedDatasourceType[],
+): string => {
+  const table = datasources.find((d) => d.name === entity);
+  const col = table?.primaryKeyColumn ?? "id";
+  return table?.fields.find((f) => f.name === col)?.type ?? "integer";
+};
+
 const bracePath = (path: string): string =>
   path.replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, "{$1}");
-
-const systemColumns = (
-  idType: string,
-): Array<{ name: string; type: string }> => [
-  { name: "id", type: "id" },
-  ...(idType !== "uuid" ? [{ name: "uuid", type: "uuid" }] : []),
-  { name: "created", type: "datetime" },
-  { name: "updated", type: "datetime" },
-];
 const TEMPLATE_SAMPLES: Record<string, JsonValue> = {
   datetime: "2026-01-01T00:00:00Z",
   uuid: "00000000-0000-0000-0000-000000000000",
@@ -133,13 +129,14 @@ const converterTypeForSchema = (schema: RoutesApiSchema): string => {
   return "string";
 };
 
-const datasourceFieldSchema = (
-  field: DatasourceField,
-  ds: { idType: string },
-): RoutesApiSchema => {
+const datasourceFieldSchema = (field: DatasourceField): RoutesApiSchema => {
   let schema: RoutesApiSchema;
-  if (field.references?.split(".")[1] === "id") {
-    schema = idSchema(ds.idType);
+  if (
+    field.isPrimaryKey === true ||
+    field.name === "id" ||
+    field.references?.split(".")[1] === "id"
+  ) {
+    schema = idSchema(field.type);
   } else if (
     field.references !== undefined &&
     (field.type === "reference" || field.type === undefined)
@@ -171,7 +168,7 @@ const fieldIsRequired = (field: DatasourceField): boolean =>
 
 const omitForView = (
   view: ShapedView,
-  dsType: DatasourceType | undefined,
+  dsType: ExpandedDatasourceType | undefined,
 ): Set<string> => {
   const omit = new Set(view.omit);
   if (dsType?.datasourceType === "readonly-lookup") {
@@ -190,8 +187,7 @@ const omitForView = (
 
 const buildInheritedSchema = (
   view: ShapedView,
-  dsType: DatasourceType,
-  ds: { idType: string },
+  dsType: ExpandedDatasourceType,
 ): RoutesApiSchema => {
   const omit = omitForView(view, dsType);
   const write =
@@ -200,16 +196,9 @@ const buildInheritedSchema = (
     isEagerName(view.name);
   const properties: Record<string, RoutesApiSchema> = {};
   const required: string[] = [];
-  const declared = new Set(dsType.fields.map((f) => f.name));
-  for (const col of systemColumns(ds.idType)) {
-    if (omit.has(col.name) || declared.has(col.name)) continue;
-    properties[col.name] =
-      col.name === "id" ? idSchema(ds.idType) : schemaForPrimitive(col.type);
-    if (write) required.push(col.name);
-  }
   for (const field of dsType.fields) {
     if (omit.has(field.name)) continue;
-    properties[field.name] = datasourceFieldSchema(field, ds);
+    properties[field.name] = datasourceFieldSchema(field);
     if (write && fieldIsRequired(field)) {
       required.push(field.name);
     }
@@ -244,8 +233,7 @@ const buildDtoSchema = (fields: ViewField[]): RoutesApiSchema => {
 
 const buildComponents = (
   views: ViewType[],
-  datasources: DatasourceType[],
-  ds: { idType: string },
+  datasources: ExpandedDatasourceType[],
 ): Record<string, RoutesApiSchema> => {
   const dsByName = new Map(datasources.map((d) => [d.name, d] as const));
   const components: Record<string, RoutesApiSchema> = {};
@@ -260,7 +248,7 @@ const buildComponents = (
     components[view.name] =
       parent === undefined
         ? buildDtoSchema(view.fields)
-        : buildInheritedSchema(view, parent, ds);
+        : buildInheritedSchema(view, parent);
   }
   return components;
 };
@@ -343,8 +331,7 @@ const entry = (
 const crudEntries = (
   candidate: RouteCandidate,
   args: {
-    datasources: DatasourceType[];
-    idType: string;
+    datasources: ExpandedDatasourceType[];
     eager: Set<string>;
     components: Record<string, RoutesApiSchema>;
     collectionPath?: string;
@@ -353,13 +340,14 @@ const crudEntries = (
 ): RoutesApiRouteEntry[] => {
   const entity = candidate.name;
   const collection = args.collectionPath ?? `/api/${specPlural(entity)}`;
-  const pk = primaryKeyFor(entity, args.datasources, args.idType);
-  const member = args.memberPath ?? `${collection}/{${pk.column}}`;
+  const table = args.datasources.find((d) => d.name === entity);
+  const column = table?.primaryKeyColumn ?? "id";
+  const member = args.memberPath ?? `${collection}/{${column}}`;
   const readonly = candidate.datasourceType === "readonly-lookup";
   const eager = args.eager.has(entity);
   const post = eager
     ? `${entity}_eager_create_body`
-    : pk.column !== "id"
+    : column !== "id"
       ? `create_${entity}`
       : `update_${entity}`;
   const put = eager ? `${entity}_eager_body` : `update_${entity}`;
@@ -368,7 +356,7 @@ const crudEntries = (
   const meta = {
     entity,
     isCustom: false,
-    primaryKeyField: pk.column === "id" ? null : pk.column,
+    primaryKeyField: column === "id" ? null : column,
   };
   const { components } = args;
   const routes = [
@@ -518,7 +506,7 @@ const combinedPrefix = (nested: NestedRouteDescriptor): string =>
 const combinedEntries = (
   nested: NestedRouteDescriptor,
   components: Record<string, RoutesApiSchema>,
-  ds: { idType: string },
+  datasources: ExpandedDatasourceType[],
 ): { routes: RoutesApiRouteEntry[]; extra: Record<string, RoutesApiSchema> } => {
   const { collection, member } = nestedPaths(nested);
   const prefix = combinedPrefix(nested);
@@ -543,7 +531,7 @@ const combinedEntries = (
       required: [nested.childFkField],
       properties: {
         [nested.childFkField]: {
-          ...idSchema(ds.idType),
+          ...idSchema(pkTypeOf(nested.target, datasources)),
           "x-references": `${nested.target}.id`,
         },
       },
@@ -567,8 +555,7 @@ const parentCrudEntries = (
   parent: string,
   parentRoute: string,
   args: {
-    datasources: DatasourceType[];
-    idType: string;
+    datasources: ExpandedDatasourceType[];
     eager: Set<string>;
     components: Record<string, RoutesApiSchema>;
   },
@@ -616,11 +603,10 @@ const combinedParentsWithRoute = (routesYaml: string): Map<string, string> => {
 const parseRoutesApi = (args: {
   parsed: ParsedRoutes;
   views: ViewType[];
-  settings: Record<string, string>;
+  datasources: ExpandedDatasourceType[];
   routesYaml: string;
 }): RoutesApiDoc => {
-  const ds = { idType: datasourceIdType(args.settings) };
-  const components = buildComponents(args.views, args.parsed.datasources, ds);
+  const components = buildComponents(args.views, args.datasources);
   const eager = eagerRoots(args.routesYaml);
   const routedParents = combinedParentsWithRoute(args.routesYaml);
   const routes: RoutesApiRouteEntry[] = [];
@@ -636,8 +622,7 @@ const parseRoutesApi = (args: {
     if (routedParents.has(candidate.name)) continue;
     routes.push(
       ...crudEntries(candidate, {
-        datasources: args.parsed.datasources,
-        idType: ds.idType,
+        datasources: args.datasources,
         eager,
         components,
       }),
@@ -651,8 +636,7 @@ const parseRoutesApi = (args: {
   for (const [parent, route] of routedParents) {
     routes.push(
       ...parentCrudEntries(parent, route, {
-        datasources: args.parsed.datasources,
-        idType: ds.idType,
+        datasources: args.datasources,
         eager,
         components,
       }),
@@ -660,7 +644,11 @@ const parseRoutesApi = (args: {
   }
 
   for (const nested of args.parsed.nested) {
-    const { routes: items, extra } = combinedEntries(nested, components, ds);
+    const { routes: items, extra } = combinedEntries(
+      nested,
+      components,
+      args.datasources,
+    );
     Object.assign(components, extra);
     routes.push(...items);
   }
@@ -679,7 +667,7 @@ export const loadRoutesApi = async (
   return parseRoutesApi({
     parsed: spec.routes,
     views: spec.viewTypes,
-    settings: ctx.settings,
+    datasources: spec.expandedDatasourceTypes,
     routesYaml,
   });
 };

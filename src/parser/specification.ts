@@ -43,7 +43,10 @@ export type DatasourceType = {
   optimisticConcurrency?: boolean;
 };
 
-export type PrimaryKey = { column: string; idType: string };
+/** Authored datasource type plus injected StandardTable columns and `primaryKeyColumn`. */
+export type ExpandedDatasourceType = DatasourceType & {
+  primaryKeyColumn: string;
+};
 
 export type ViewFieldKind = "primitive" | "datasource" | "view";
 
@@ -83,6 +86,9 @@ export type UnionView = {
 };
 
 export type ViewType = ShapedView | UnionView;
+
+/** Authored view with inherited datasource columns inlined. */
+export type ExpandedViewType = ViewType;
 
 export type ServiceByField = {
   field: string;
@@ -195,28 +201,11 @@ export const parseFieldType = (
   return { kind: "view", base, isArray };
 };
 
-const idTypeFromFieldType = (fieldType: string): string => {
-  if (
-    fieldType === "string" ||
-    fieldType === "uuid" ||
-    fieldType === "biginteger"
-  ) {
-    return fieldType;
-  }
-  return "integer";
-};
+const PROJECT_ID_TYPES = new Set(["integer", "biginteger", "uuid", "string"]);
 
-/** First non-`id` `primary_key` field, else the project `id` / `idType`. */
-export const primaryKeyFor = (
-  entity: string,
-  datasources: DatasourceType[],
-  defaultIdType: string,
-): PrimaryKey => {
-  const table = datasources.find((d) => d.name === entity);
-  const custom = table?.fields.find((f) => f.isPrimaryKey && f.name !== "id");
-  if (custom === undefined) return { column: "id", idType: defaultIdType };
-  return { column: custom.name, idType: idTypeFromFieldType(custom.type) };
-};
+/** Project `datasource.id_type`, or `integer` when the setting is missing/unknown. */
+export const resolvedProjectIdType = (raw: string): string =>
+  PROJECT_ID_TYPES.has(raw) ? raw : "integer";
 
 /** Unique lookup columns: `is_unique` fields plus single-column unique indexes. */
 export const uniqueLookupFields = (
@@ -305,7 +294,8 @@ export const expandDatasourceTypes = (
   types: DatasourceType[],
   idType: string,
   useOptimisticConcurrency = true,
-): DatasourceType[] => {
+): ExpandedDatasourceType[] => {
+  const projectIdType = resolvedProjectIdType(idType);
   for (const type of types) {
     const collision = type.fields.find((f) => isStandardTableFieldName(f.name));
     if (collision !== undefined) {
@@ -315,7 +305,7 @@ export const expandDatasourceTypes = (
     }
   }
   return types.map((type) => {
-    const standard = injectedDatasourceFields(idType);
+    const standard = injectedDatasourceFields(projectIdType);
     const injected: DatasourceField[] = [];
     if (!hasAnyPrimaryKey(type)) {
       injected.push(...standard.filter((f) => f.name === "id"));
@@ -326,9 +316,11 @@ export const expandDatasourceTypes = (
     const seen = new Set(injected.map((f) => f.name));
     return {
       ...type,
+      primaryKeyColumn:
+        type.fields.find((f) => f.isPrimaryKey === true)?.name ?? "id",
       fields: [
         ...injected,
-        ...declaredFields(type.fields, idType).filter((f) => !seen.has(f.name)),
+        ...declaredFields(type.fields, projectIdType).filter((f) => !seen.has(f.name)),
       ],
     };
   });
@@ -348,22 +340,25 @@ const asViewField = (field: DatasourceField): ViewField => ({
 /** Inherited columns inlined; enrichment FK columns omitted. */
 export const expandViewTypes = (
   views: ViewType[],
-  datasources: DatasourceType[],
-): ViewType[] => {
+  datasources: ExpandedDatasourceType[],
+): ExpandedViewType[] => {
   const byName = new Map(datasources.map((t) => [t.name, t]));
   return views.map((view) => {
     if (view.kind !== "shaped") return view;
+    const parent =
+      view.inherits !== null ? byName.get(view.inherits) : undefined;
     const omit = new Set([
       ...view.omit,
       ...view.enrichments.map((e) => e.fkColumn),
     ]);
-    const parent =
-      view.inherits !== null ? byName.get(view.inherits) : undefined;
     const inherited =
       parent === undefined
         ? []
         : parent.fields.filter((f) => !omit.has(f.name)).map(asViewField);
-    return { ...view, fields: [...inherited, ...view.fields] };
+    return {
+      ...view,
+      fields: [...inherited, ...view.fields],
+    };
   });
 };
 
