@@ -1,6 +1,5 @@
 import type {
   DatasourceType,
-  ExpandedViewType,
   ParsedRoutes,
   ParsedServices,
   SeedRow,
@@ -13,7 +12,7 @@ export type IDeterministic = {
   datasourceSeeds: Map<string, SeedRow[]>;
   viewTypes: ViewType[];
   expandedDatasourceTypes: DatasourceType[];
-  expandedViewTypes: ExpandedViewType[];
+  expandedViewTypes: ViewType[];
   services: ParsedServices;
   routes: ParsedRoutes;
 };
@@ -23,7 +22,7 @@ export class Deterministic implements IDeterministic {
   readonly datasourceSeeds: Map<string, SeedRow[]>;
   readonly viewTypes: ViewType[];
   readonly expandedDatasourceTypes: DatasourceType[];
-  readonly expandedViewTypes: ExpandedViewType[];
+  readonly expandedViewTypes: ViewType[];
   readonly services: ParsedServices;
   readonly routes: ParsedRoutes;
 
