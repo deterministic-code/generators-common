@@ -4,7 +4,17 @@ import {
   type ReferenceAttributes,
 } from "./generate-entry.ts";
 
-type ContentEntry = Extract<GenerateEntry, { kind: "content" }>;
+/** Well-known keys ReferenceVerifier reads from attribute bags. */
+export const REFERENCE_ATTRIBUTE_KEYS = [
+  "module",
+  "exports",
+  "namespace",
+  "imports",
+  "uses",
+  "namespaceRefs",
+] as const;
+
+export type ReferenceAttributeKey = (typeof REFERENCE_ATTRIBUTE_KEYS)[number];
 
 type Mismatch = {
   from: string;
@@ -13,13 +23,14 @@ type Mismatch = {
     | "uses"
     | "namespaceRef"
     | "duplicateModule"
-    | "duplicateNamespace";
+    | "duplicateNamespace"
+    | "relativePath";
   expected: string;
   hint?: string;
 };
 
 /** Split a comma-separated attribute value into trimmed non-empty parts. */
-const list = (value: string | undefined): string[] =>
+export const listAttribute = (value: string | undefined): string[] =>
   value === undefined
     ? []
     : value
@@ -38,71 +49,107 @@ const findCaseInsensitive = (
   return undefined;
 };
 
-const moduleKey = (entry: ContentEntry): string =>
-  entry.attributes?.module ?? entry.filename;
+/** True when a path is emit-relative (`./`, `../`) rather than a Rel module key. */
+export const isRelativeModulePath = (path: string): boolean =>
+  path.startsWith("./") || path.startsWith("../") || path.includes("/../") || path.includes("/./");
 
+/** Keep only verifier keys from a generic attribute bag. */
+export const pickReferenceAttributes = (
+  attrs: ReferenceAttributes,
+): ReferenceAttributes => {
+  const out: ReferenceAttributes = {};
+  for (const key of REFERENCE_ATTRIBUTE_KEYS) {
+    const value = attrs[key];
+    if (value !== undefined && value !== "") out[key] = value;
+  }
+  return out;
+};
+
+/**
+ * Collect verifier attribute bags from generate entries.
+ * Only well-known keys are kept; relative `../` paths belong in fill tokens, not here.
+ */
+export const referenceAttributesFromEntries = (
+  entries: GenerateEntry[],
+): ReferenceAttributes[] =>
+  entries.flatMap((entry) => {
+    if (entry.kind !== "content" || entry.attributes === undefined) return [];
+    const picked = pickReferenceAttributes(entry.attributes);
+    return Object.keys(picked).length === 0 ? [] : [picked];
+  });
+
+/**
+ * Verifies module / export / namespace graphs using attribute strings only.
+ * `module` and `imports` must be project-relative Rel keys (e.g. `types/generated/views/user.ts`),
+ * never `../../…` — relative specs are computed at fill time from Rel pairs.
+ */
 export class ReferenceVerifier {
-  verify(entries: GenerateEntry[]): void {
-    const contents = entries.filter(
-      (e): e is ContentEntry => e.kind === "content",
-    );
-
-    const modules = new Map<string, ContentEntry>();
-    const exports = new Map<string, ContentEntry>();
-    const namespaces = new Map<string, ContentEntry>();
+  verify(attributes: readonly ReferenceAttributes[]): void {
+    const modules = new Map<string, string>();
+    const exports = new Map<string, string>();
+    const namespaces = new Map<string, string>();
     const mismatches: Mismatch[] = [];
 
-    for (const entry of contents) {
-      const attrs: ReferenceAttributes | undefined = entry.attributes;
-      if (attrs === undefined) continue;
+    for (const attrs of attributes) {
+      const from = attrs.module ?? "(unknown module)";
 
-      const mod = moduleKey(entry);
-      const existingMod = modules.get(mod);
-      if (existingMod !== undefined && existingMod !== entry) {
-        mismatches.push({
-          from: entry.filename,
-          kind: "duplicateModule",
-          expected: mod,
-        });
-      } else {
-        modules.set(mod, entry);
+      if (attrs.module !== undefined) {
+        if (isRelativeModulePath(attrs.module)) {
+          mismatches.push({
+            from,
+            kind: "relativePath",
+            expected: attrs.module,
+            hint: "use a Rel module key (e.g. types/generated/views/user.ts), not a relative import spec",
+          });
+        }
+        if (modules.has(attrs.module)) {
+          mismatches.push({
+            from,
+            kind: "duplicateModule",
+            expected: attrs.module,
+            hint: `also declared as ${modules.get(attrs.module)}`,
+          });
+        } else {
+          modules.set(attrs.module, from);
+        }
       }
 
-      for (const name of list(attrs.exports)) {
-        // Same export name from different modules is allowed (e.g. view + datasource).
-        if (!exports.has(name)) exports.set(name, entry);
+      for (const name of listAttribute(attrs.exports)) {
+        if (!exports.has(name)) exports.set(name, from);
       }
 
       if (attrs.namespace !== undefined && attrs.namespace !== "") {
         const existingNs = namespaces.get(attrs.namespace);
-        if (existingNs !== undefined && existingNs !== entry) {
+        if (existingNs !== undefined && existingNs !== from) {
           mismatches.push({
-            from: entry.filename,
+            from,
             kind: "duplicateNamespace",
             expected: attrs.namespace,
-            hint: `also declared in ${existingNs.filename}`,
+            hint: `also declared as ${existingNs}`,
           });
         } else {
-          namespaces.set(attrs.namespace, entry);
+          namespaces.set(attrs.namespace, from);
         }
       }
     }
 
-    for (const entry of contents) {
-      if (entry.attributes !== undefined) continue;
-      const mod = entry.filename;
-      if (!modules.has(mod)) modules.set(mod, entry);
-    }
+    for (const attrs of attributes) {
+      const from = attrs.module ?? "(unknown module)";
 
-    for (const entry of contents) {
-      const attrs = entry.attributes;
-      if (attrs === undefined) continue;
-
-      for (const imp of list(attrs.imports)) {
+      for (const imp of listAttribute(attrs.imports)) {
+        if (isRelativeModulePath(imp)) {
+          mismatches.push({
+            from,
+            kind: "relativePath",
+            expected: imp,
+            hint: "imports must be Rel module keys, not ../../ paths",
+          });
+          continue;
+        }
         if (!modules.has(imp)) {
           const hint = findCaseInsensitive(imp, modules.keys());
           mismatches.push({
-            from: entry.filename,
+            from,
             kind: "import",
             expected: imp,
             hint: hint === undefined ? undefined : `did you mean "${hint}"?`,
@@ -110,11 +157,11 @@ export class ReferenceVerifier {
         }
       }
 
-      for (const use of list(attrs.uses)) {
+      for (const use of listAttribute(attrs.uses)) {
         if (!exports.has(use)) {
           const hint = findCaseInsensitive(use, exports.keys());
           mismatches.push({
-            from: entry.filename,
+            from,
             kind: "uses",
             expected: use,
             hint: hint === undefined ? undefined : `did you mean "${hint}"?`,
@@ -122,11 +169,11 @@ export class ReferenceVerifier {
         }
       }
 
-      for (const ns of list(attrs.namespaceRefs)) {
+      for (const ns of listAttribute(attrs.namespaceRefs)) {
         if (!namespaces.has(ns)) {
           const hint = findCaseInsensitive(ns, namespaces.keys());
           mismatches.push({
-            from: entry.filename,
+            from,
             kind: "namespaceRef",
             expected: ns,
             hint: hint === undefined ? undefined : `did you mean "${hint}"?`,
@@ -148,6 +195,6 @@ export class ReferenceVerifier {
 }
 
 export const finalizeEntries = (entries: GenerateEntry[]): GenerateEntry[] => {
-  new ReferenceVerifier().verify(entries);
+  new ReferenceVerifier().verify(referenceAttributesFromEntries(entries));
   return stripAttributes(entries);
 };
