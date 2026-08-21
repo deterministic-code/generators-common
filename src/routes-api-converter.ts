@@ -3,9 +3,10 @@ import { parse as parseYaml } from "yaml";
 import type { GenerateContext } from "./generate-context.ts";
 import {
   ROUTES_YAML,
+  primaryKeyColumn,
   type CustomRouteEntry,
   type DatasourceField,
-  type ExpandedDatasourceType,
+  type DatasourceType,
   type NestedRouteDescriptor,
   type ParsedRoutes,
   type RouteByField,
@@ -66,10 +67,10 @@ const pascalIdent = (name: string): string => {
 
 const pkTypeOf = (
   entity: string,
-  datasources: ExpandedDatasourceType[],
+  datasources: DatasourceType[],
 ): string => {
   const table = datasources.find((d) => d.name === entity);
-  const col = table?.primaryKeyColumn ?? "id";
+  const col = primaryKeyColumn(table);
   return table?.fields.find((f) => f.name === col)?.type ?? "integer";
 };
 
@@ -180,7 +181,7 @@ const fieldIsRequired = (field: DatasourceField): boolean =>
 
 const omitForView = (
   view: ShapedView,
-  dsType: ExpandedDatasourceType | undefined,
+  dsType: DatasourceType | undefined,
 ): Set<string> => {
   const omit = new Set(view.omit);
   if (dsType?.datasourceType === "readonly-lookup") {
@@ -199,7 +200,7 @@ const omitForView = (
 
 const buildInheritedSchema = (
   view: ShapedView,
-  dsType: ExpandedDatasourceType,
+  dsType: DatasourceType,
 ): RoutesApiSchema => {
   const omit = omitForView(view, dsType);
   const write =
@@ -245,7 +246,7 @@ const buildDtoSchema = (fields: ViewField[]): RoutesApiSchema => {
 
 const buildComponents = (
   views: ViewType[],
-  datasources: ExpandedDatasourceType[],
+  datasources: DatasourceType[],
 ): Record<string, RoutesApiSchema> => {
   const dsByName = new Map(datasources.map((d) => [d.name, d] as const));
   const components: Record<string, RoutesApiSchema> = {};
@@ -352,7 +353,7 @@ const occWrite = (
 const crudEntries = (
   candidate: RouteCandidate,
   args: {
-    datasources: ExpandedDatasourceType[];
+    datasources: DatasourceType[];
     eager: Set<string>;
     components: Record<string, RoutesApiSchema>;
     settings: ISettings;
@@ -363,7 +364,7 @@ const crudEntries = (
   const entity = candidate.name;
   const collection = args.collectionPath ?? `/api/${specPlural(entity)}`;
   const table = args.datasources.find((d) => d.name === entity);
-  const column = table?.primaryKeyColumn ?? "id";
+  const column = primaryKeyColumn(table);
   const member = args.memberPath ?? `${collection}/{${column}}`;
   const readonly = candidate.datasourceType === "readonly-lookup";
   const eager = args.eager.has(entity);
@@ -534,7 +535,7 @@ const combinedPrefix = (nested: NestedRouteDescriptor): string =>
 const combinedEntries = (
   nested: NestedRouteDescriptor,
   components: Record<string, RoutesApiSchema>,
-  datasources: ExpandedDatasourceType[],
+  datasources: DatasourceType[],
   settings: ISettings,
 ): { routes: RoutesApiRouteEntry[]; extra: Record<string, RoutesApiSchema> } => {
   const { collection, member } = nestedPaths(nested);
@@ -586,7 +587,7 @@ const parentCrudEntries = (
   parent: string,
   parentRoute: string,
   args: {
-    datasources: ExpandedDatasourceType[];
+    datasources: DatasourceType[];
     eager: Set<string>;
     components: Record<string, RoutesApiSchema>;
     settings: ISettings;
@@ -635,7 +636,7 @@ const combinedParentsWithRoute = (routesYaml: string): Map<string, string> => {
 const parseRoutesApi = (args: {
   parsed: ParsedRoutes;
   views: ViewType[];
-  datasources: ExpandedDatasourceType[];
+  datasources: DatasourceType[];
   routesYaml: string;
   settings: ISettings;
 }): RoutesApiDoc => {

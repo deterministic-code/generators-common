@@ -4,6 +4,7 @@ import { memoryReader } from "../deterministic-reader.ts";
 import {
   DATASOURCE_SEEDS_YAML,
   DATASOURCE_TYPES_YAML,
+  primaryKeyColumn,
 } from "./specification.ts";
 import { DeterministicParser } from "./specification-parser.ts";
 
@@ -118,7 +119,7 @@ describe("expanded datasource primary key", () => {
       "uuid",
     );
     const user = spec.expandedDatasourceTypes.find((t) => t.name === "user");
-    assert.equal(user?.primaryKeyColumn, "id");
+    assert.equal(primaryKeyColumn(user), "id");
     assert.equal(user?.fields.find((f) => f.name === "id")?.type, "uuid");
   });
 
@@ -133,7 +134,7 @@ describe("expanded datasource primary key", () => {
 `,
     });
     const parent = spec.expandedDatasourceTypes.find((t) => t.name === "parent");
-    assert.equal(parent?.primaryKeyColumn, "code");
+    assert.equal(primaryKeyColumn(parent), "code");
     assert.equal(parent?.fields.find((f) => f.name === "code")?.type, "string");
   });
 });
