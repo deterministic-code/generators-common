@@ -82,9 +82,6 @@ export type UnionView = {
 
 export type ViewType = ShapedView | UnionView;
 
-/** Authored view with inherited datasource columns inlined. */
-export type ExpandedViewType = ViewType;
-
 export type ServiceByField = {
   field: string;
   type: string;
@@ -344,7 +341,7 @@ const asViewField = (field: DatasourceField): ViewField => ({
 export const expandViewTypes = (
   views: ViewType[],
   datasources: DatasourceType[],
-): ExpandedViewType[] => {
+): ViewType[] => {
   const byName = new Map(datasources.map((t) => [t.name, t]));
   return views.map((view) => {
     if (view.kind !== "shaped") return view;
