@@ -358,3 +358,47 @@ describe("createCasingStrategy overrides", () => {
     });
   }
 });
+
+describe("createCasingStrategy prefix", () => {
+  it("reads datasource.casing keys with SQL Snake Auto defaults", () => {
+    const casing = createCasingStrategy(
+      "sql",
+      {
+        "datasource.casing.types": "Pascal",
+        "datasource.casing.fields": "Camel",
+      },
+      { prefix: "datasource.casing" },
+    );
+    assert.equal(casing.convertTypes("notification_type"), "NotificationType");
+    assert.equal(casing.convertFields("channel_name"), "channelName");
+    assert.equal(casing.convertFileName("notification_type"), "notification_type");
+    assert.equal(
+      casing.convertDirectories("notification_type"),
+      "notification_type",
+    );
+  });
+
+  it("throws with the custom prefix in the error path", () => {
+    assert.throws(
+      () =>
+        createCasingStrategy(
+          "sql",
+          { "datasource.casing.types": "screaming" },
+          { prefix: "datasource.casing" },
+        ),
+      /datasource\.casing\.types must be one of/,
+    );
+  });
+
+  it("ignores languages.sql.casing when a custom prefix is set", () => {
+    const casing = createCasingStrategy(
+      "sql",
+      {
+        "languages.sql.casing.types": "Pascal",
+        "datasource.casing.types": "Kebab",
+      },
+      { prefix: "datasource.casing" },
+    );
+    assert.equal(casing.convertTypes("notification_type"), "notification-type");
+  });
+});
