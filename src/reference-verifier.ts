@@ -24,9 +24,52 @@ type Mismatch = {
     | "namespaceRef"
     | "duplicateModule"
     | "duplicateNamespace"
-    | "relativePath";
+    | "relativePath"
+    | "missingExport"
+    | "missingUse"
+    | "missingNamespace"
+    | "missingNamespaceRef";
   expected: string;
   hint?: string;
+};
+
+const IDENT_CHAR = /[A-Za-z0-9_]/;
+
+/** True when `name` appears in `text` as a whole identifier (not a substring). */
+export const containsIdent = (text: string, name: string): boolean => {
+  if (name.length === 0) return false;
+  let from = 0;
+  while (from < text.length) {
+    const index = text.indexOf(name, from);
+    if (index < 0) return false;
+    const before = index === 0 ? "" : text[index - 1]!;
+    const after = text[index + name.length] ?? "";
+    if (!IDENT_CHAR.test(before) && !IDENT_CHAR.test(after)) return true;
+    from = index + 1;
+  }
+  return false;
+};
+
+const findIdentIgnoreCase = (
+  text: string,
+  name: string,
+): string | undefined => {
+  if (name.length === 0) return undefined;
+  const lower = name.toLowerCase();
+  const haystack = text.toLowerCase();
+  let from = 0;
+  while (from < haystack.length) {
+    const index = haystack.indexOf(lower, from);
+    if (index < 0) return undefined;
+    const actual = text.slice(index, index + name.length);
+    const before = index === 0 ? "" : text[index - 1]!;
+    const after = text[index + name.length] ?? "";
+    if (!IDENT_CHAR.test(before) && !IDENT_CHAR.test(after) && actual !== name) {
+      return actual;
+    }
+    from = index + 1;
+  }
+  return undefined;
 };
 
 /** Split a comma-separated attribute value into trimmed non-empty parts. */
@@ -182,8 +225,52 @@ export class ReferenceVerifier {
       }
     }
 
-    if (mismatches.length === 0) return;
+    this.throwIf(mismatches);
+  }
 
+  /**
+   * Declared `exports` / `uses` / namespace names must appear as identifiers
+   * in that entry's generated text. Catches template glue (`I{{entity}}Service`)
+   * when the attribute bag used the casing helper.
+   */
+  verifyContents(entries: readonly GenerateEntry[]): void {
+    const mismatches: Mismatch[] = [];
+    for (const entry of entries) {
+      if (entry.kind !== "content" || entry.attributes === undefined) continue;
+      const attrs = pickReferenceAttributes(entry.attributes);
+      if (Object.keys(attrs).length === 0) continue;
+      const from = attrs.module ?? entry.filename;
+      const body = entry.contents;
+      const check = (
+        names: string[],
+        kind: "missingExport" | "missingUse" | "missingNamespace" | "missingNamespaceRef",
+      ): void => {
+        for (const name of names) {
+          if (containsIdent(body, name)) continue;
+          const hint = findIdentIgnoreCase(body, name);
+          mismatches.push({
+            from,
+            kind,
+            expected: name,
+            hint:
+              hint === undefined
+                ? "not in file"
+                : `file has "${hint}"`,
+          });
+        }
+      };
+      check(listAttribute(attrs.exports), "missingExport");
+      check(listAttribute(attrs.uses), "missingUse");
+      if (attrs.namespace !== undefined && attrs.namespace !== "") {
+        check([attrs.namespace], "missingNamespace");
+      }
+      check(listAttribute(attrs.namespaceRefs), "missingNamespaceRef");
+    }
+    this.throwIf(mismatches);
+  }
+
+  private throwIf(mismatches: Mismatch[]): void {
+    if (mismatches.length === 0) return;
     const lines = mismatches.map((m) => {
       const base = `${m.from}: ${m.kind} "${m.expected}"`;
       return m.hint === undefined ? base : `${base} (${m.hint})`;
@@ -194,7 +281,14 @@ export class ReferenceVerifier {
   }
 }
 
+/** Graph check plus content/attribute consistency. */
+export const verifyEntries = (entries: GenerateEntry[]): void => {
+  const verifier = new ReferenceVerifier();
+  verifier.verify(referenceAttributesFromEntries(entries));
+  verifier.verifyContents(entries);
+};
+
 export const finalizeEntries = (entries: GenerateEntry[]): GenerateEntry[] => {
-  new ReferenceVerifier().verify(referenceAttributesFromEntries(entries));
+  verifyEntries(entries);
   return stripAttributes(entries);
 };

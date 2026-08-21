@@ -8,11 +8,13 @@ import {
   type ReferenceAttributes,
 } from "./generate-entry.ts";
 import {
+  containsIdent,
   finalizeEntries,
   isRelativeModulePath,
   pickReferenceAttributes,
   referenceAttributesFromEntries,
   ReferenceVerifier,
+  verifyEntries,
 } from "./reference-verifier.ts";
 
 describe("ReferenceVerifier", () => {
@@ -160,20 +162,60 @@ describe("reference attribute helpers", () => {
     assert.equal(isRelativeModulePath("types/generated/views/user.ts"), false);
   });
 
+  it("containsIdent requires identifier boundaries", () => {
+    assert.equal(containsIdent("export type User = {}", "User"), true);
+    assert.equal(containsIdent("export type UserService = {}", "User"), false);
+    assert.equal(containsIdent("IcontactService", "i_contact_service"), false);
+  });
+
+  it("verifyContents fails when uses is declared but glued in the file", () => {
+    assert.throws(
+      () =>
+        new ReferenceVerifier().verifyContents([
+          content(
+            "contact.ts",
+            'import { IcontactService } from "../../services/generated/contact_service";',
+            {
+              module: "routes/generated/contact.ts",
+              uses: "i_contact_service",
+            },
+          ),
+        ]),
+      /missingUse "i_contact_service".*not in file/,
+    );
+  });
+
+  it("verifyContents hints when the file has the name in the wrong case", () => {
+    assert.throws(
+      () =>
+        new ReferenceVerifier().verifyContents([
+          content("user.ts", "export type user = {}", {
+            module: "types/generated/views/user.ts",
+            exports: "User",
+          }),
+        ]),
+      /missingExport "User".*file has "user"/,
+    );
+  });
+
   it("referenceAttributesFromEntries feeds verifier; finalize strips", () => {
     const entries: GenerateEntry[] = [
-      content("user.ts", "{{#exports}}…{{/exports}}", {
+      content("user.ts", "export type User = {}", {
         module: "types/generated/views/user.ts",
         exports: "User",
         typeName: "User",
       }),
-      content("userService.ts", "{{#imports}}…{{/imports}}", {
-        module: "services/generated/userService.ts",
-        exports: "UserService",
-        imports: "types/generated/views/user.ts",
-        uses: "User",
-        typeImportPath: "../../types/generated/views/user",
-      }),
+      content(
+        "userService.ts",
+        "import { User }\nexport class UserService {}",
+        {
+          module: "services/generated/userService.ts",
+          exports: "UserService",
+          imports: "types/generated/views/user.ts",
+          uses: "User",
+          typeImportPath: "../../types/generated/views/user",
+        },
+      ),
       content("plain.ts", "no attrs"),
       patch("pkg.json", "{}", "typescript"),
     ];
@@ -188,16 +230,17 @@ describe("reference attribute helpers", () => {
       },
     ]);
     assert.doesNotThrow(() => new ReferenceVerifier().verify(attrs));
+    assert.doesNotThrow(() => verifyEntries(entries));
     assert.deepEqual(finalizeEntries(entries), [
       {
         kind: "content",
         filename: "user.ts",
-        contents: "{{#exports}}…{{/exports}}",
+        contents: "export type User = {}",
       },
       {
         kind: "content",
         filename: "userService.ts",
-        contents: "{{#imports}}…{{/imports}}",
+        contents: "import { User }\nexport class UserService {}",
       },
       { kind: "content", filename: "plain.ts", contents: "no attrs" },
       { kind: "patch", filename: "pkg.json", content: "{}", section: "typescript" },
