@@ -77,6 +77,8 @@ describe("parseServices", () => {
     });
 
     assert.equal(parsed.customs[0]?.name, "HealthCheckService");
+    assert.equal(parsed.customs[0]?.module, undefined);
+    assert.deepEqual(parsed.customs[0]?.methods, ["check"]);
     assert.deepEqual(
       parsed.customs.map((c) => c.name),
       ["HealthCheckService", "ReportService"],
