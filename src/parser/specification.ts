@@ -43,11 +43,6 @@ export type DatasourceType = {
   optimisticConcurrency?: boolean;
 };
 
-/** Authored datasource type plus injected StandardTable columns and `primaryKeyColumn`. */
-export type ExpandedDatasourceType = DatasourceType & {
-  primaryKeyColumn: string;
-};
-
 export type ViewFieldKind = "primitive" | "datasource" | "view";
 
 export type ViewField = {
@@ -212,6 +207,11 @@ const PROJECT_ID_TYPES = new Set(["integer", "biginteger", "uuid", "string"]);
 export const resolvedProjectIdType = (raw: string): string =>
   PROJECT_ID_TYPES.has(raw) ? raw : "integer";
 
+/** Declared `primary_key` column, otherwise `id`. */
+export const primaryKeyColumn = (
+  type: DatasourceType | undefined,
+): string => type?.fields.find((f) => f.isPrimaryKey === true)?.name ?? "id";
+
 /** Unique lookup columns: `is_unique` fields plus single-column unique indexes. */
 export const uniqueLookupFields = (
   type: DatasourceType,
@@ -299,7 +299,7 @@ export const expandDatasourceTypes = (
   types: DatasourceType[],
   idType: string,
   useOptimisticConcurrency = true,
-): ExpandedDatasourceType[] => {
+): DatasourceType[] => {
   const projectIdType = resolvedProjectIdType(idType);
   for (const type of types) {
     const collision = type.fields.find((f) => isStandardTableFieldName(f.name));
@@ -321,8 +321,6 @@ export const expandDatasourceTypes = (
     const seen = new Set(injected.map((f) => f.name));
     return {
       ...type,
-      primaryKeyColumn:
-        type.fields.find((f) => f.isPrimaryKey === true)?.name ?? "id",
       fields: [
         ...injected,
         ...declaredFields(type.fields, projectIdType).filter((f) => !seen.has(f.name)),
@@ -345,7 +343,7 @@ const asViewField = (field: DatasourceField): ViewField => ({
 /** Inherited columns inlined; enrichment FK columns omitted. */
 export const expandViewTypes = (
   views: ViewType[],
-  datasources: ExpandedDatasourceType[],
+  datasources: DatasourceType[],
 ): ExpandedViewType[] => {
   const byName = new Map(datasources.map((t) => [t.name, t]));
   return views.map((view) => {
