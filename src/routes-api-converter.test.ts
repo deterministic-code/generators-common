@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { memoryReader } from "./deterministic-reader.ts";
 import { loadRoutesApi } from "./routes-api-converter.ts";
-import { DeterministicParser } from "./parser/specification-parser.ts";
 
 const viewPassThrough = `includes:
   - datasource_types:
@@ -200,20 +199,57 @@ routes: []
     assert.ok(doc.components.search_result?.oneOf);
   });
 
-  it("reads optimistic concurrency from datasource types", async () => {
-    const types = (
-      await DeterministicParser(
-        memoryReader({
-          "datasource_types.yaml": `types:
-  - project:
+  it("stamps optimisticConcurrency on member writes when OCC is on", async () => {
+    const files = {
+      "datasource_types.yaml": `types:
+  - item:
       use_optimistic_concurrency: true
       fields:
         - name:
             type: string
+  - log:
+      use_optimistic_concurrency: false
+      fields:
+        - message:
+            type: string
+  - status:
+      datasource_type: readonly-lookup
+      fields:
+        - name:
+            type: string
+            is_unique: true
 `,
-        }),
-      ).parse({ "datasource.id_type": "integer" })
-    ).datasourceTypes;
-    assert.equal(types[0]?.optimisticConcurrency, true);
+      "view_types.yaml": viewPassThrough,
+      "routes.yaml": crudRoutes,
+    };
+    const on = await loadRoutesApi({
+      reader: memoryReader(files),
+      settings: { "datasource.use_optimistic_concurrency": "false" },
+    });
+    assert.equal(routeOf(on.routes, "itemUpdate").optimisticConcurrency, true);
+    assert.equal(routeOf(on.routes, "itemPatch").optimisticConcurrency, true);
+    assert.equal(routeOf(on.routes, "itemDelete").optimisticConcurrency, true);
+    assert.equal(routeOf(on.routes, "itemGet").optimisticConcurrency, undefined);
+    assert.equal(routeOf(on.routes, "itemCreate").optimisticConcurrency, undefined);
+    assert.equal(routeOf(on.routes, "logUpdate").optimisticConcurrency, undefined);
+    assert.equal(
+      on.routes.some((entry) => "statusUpdate" in entry),
+      false,
+    );
+
+    const off = await loadRoutesApi({
+      reader: memoryReader({
+        "datasource_types.yaml": `types:
+  - user:
+      fields:
+        - email:
+            type: string
+`,
+        "view_types.yaml": viewPassThrough,
+        "routes.yaml": crudRoutes,
+      }),
+      settings: { "datasource.use_optimistic_concurrency": "false" },
+    });
+    assert.equal(routeOf(off.routes, "userUpdate").optimisticConcurrency, undefined);
   });
 });

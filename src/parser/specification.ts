@@ -132,9 +132,14 @@ export type RouteCandidate = {
 };
 
 export type CustomRouteEntry = {
-  /** Original single-key route map entry, e.g. { getHealth: { ... } } */
-  entry: Record<string, unknown>;
   name: string;
+  path?: string;
+  method?: string;
+  entity: string | null;
+  request?: string;
+  response?: string;
+  module?: string;
+  routeClass?: string;
 };
 
 export type DirectFkDescriptor = {
@@ -360,16 +365,4 @@ export const expandViewTypes = (
       fields: [...inherited, ...view.fields],
     };
   });
-};
-
-export const entityUsesOptimisticConcurrency = (
-  table: { datasourceType?: string | null; optimisticConcurrency?: boolean },
-  globalFlag: boolean,
-): boolean => {
-  if (table.datasourceType === "many-to-many") return false;
-  if (table.datasourceType === "readonly-lookup") return false;
-  if (table.optimisticConcurrency !== undefined) {
-    return table.optimisticConcurrency;
-  }
-  return globalFlag === true;
 };

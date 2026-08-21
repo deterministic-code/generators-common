@@ -14,17 +14,29 @@ import {
   type ViewField,
   type ViewType,
 } from "./parser/specification.ts";
+import { fromSettings, type ISettings } from "./settings.ts";
 import { DeterministicParser } from "./parser/specification-parser.ts";
 import {
   ROUTES_API_VERSION,
+  type JsonValue,
   type RoutesApiBody,
   type RoutesApiDoc,
   type RoutesApiRouteDef,
   type RoutesApiRouteEntry,
   type RoutesApiSchema,
 } from "./routes-api.ts";
-import type { JsonValue } from "./yaml-entry.ts";
-import { isRecord, namedEntries } from "./yaml-entry.ts";
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const namedEntries = (value: unknown): Array<[string, unknown]> =>
+  Array.isArray(value)
+    ? value.flatMap((item) => {
+        if (!isRecord(item)) return [];
+        const name = Object.keys(item)[0];
+        return name === undefined ? [] : [[name, item[name]]];
+      })
+    : [];
 
 const BY_FIELD_METHODS = ["GET", "PUT", "DELETE"] as const;
 const EAGER_SUFFIXES = [
@@ -325,8 +337,17 @@ const entry = (
   if (def.byField !== undefined) out.byField = def.byField;
   if (def.byFieldUnique !== undefined) out.byFieldUnique = def.byFieldUnique;
   if (def.primaryKeyField !== undefined) out.primaryKeyField = def.primaryKeyField;
+  if (def.optimisticConcurrency === true) out.optimisticConcurrency = true;
   return { [name]: out };
 };
+
+const occWrite = (
+  table: { datasourceType?: string | null; optimisticConcurrency?: boolean },
+  settings: ISettings,
+): { optimisticConcurrency: true } | Record<string, never> =>
+  settings.usesOptimisticConcurrency(table)
+    ? { optimisticConcurrency: true }
+    : {};
 
 const crudEntries = (
   candidate: RouteCandidate,
@@ -334,6 +355,7 @@ const crudEntries = (
     datasources: ExpandedDatasourceType[];
     eager: Set<string>;
     components: Record<string, RoutesApiSchema>;
+    settings: ISettings;
     collectionPath?: string;
     memberPath?: string;
   },
@@ -358,6 +380,7 @@ const crudEntries = (
     isCustom: false,
     primaryKeyField: column === "id" ? null : column,
   };
+  const occ = occWrite(candidate, args.settings);
   const { components } = args;
   const routes = [
     entry(
@@ -387,7 +410,14 @@ const crudEntries = (
     ),
     entry(
       `${camel}Update`,
-      { path: member, method: "PUT", request: put, response: entity, ...meta },
+      {
+        path: member,
+        method: "PUT",
+        request: put,
+        response: entity,
+        ...meta,
+        ...occ,
+      },
       components,
     ),
     entry(
@@ -398,12 +428,13 @@ const crudEntries = (
         request: patch,
         response: entity,
         ...meta,
+        ...occ,
       },
       components,
     ),
     entry(
       `${camel}Delete`,
-      { path: member, method: "DELETE", ...meta },
+      { path: member, method: "DELETE", ...meta, ...occ },
       components,
     ),
   ];
@@ -467,21 +498,18 @@ const customEntry = (
   custom: CustomRouteEntry,
   components: Record<string, RoutesApiSchema>,
 ): RoutesApiRouteEntry | null => {
-  const raw = custom.entry[custom.name];
-  if (!isRecord(raw) || typeof raw.path !== "string" || typeof raw.method !== "string") {
+  if (custom.path === undefined || custom.method === undefined) {
     return null;
   }
-  const requestName = typeof raw.request === "string" ? raw.request : undefined;
-  const responseName = typeof raw.response === "string" ? raw.response : undefined;
   return entry(
     custom.name,
     {
-      path: bracePath(raw.path),
-      method: raw.method,
-      entity: typeof raw.entity === "string" ? raw.entity : null,
+      path: bracePath(custom.path),
+      method: custom.method,
+      entity: custom.entity,
       isCustom: true,
-      request: requestName,
-      response: responseName,
+      request: custom.request,
+      response: custom.response,
     },
     components,
   );
@@ -507,19 +535,22 @@ const combinedEntries = (
   nested: NestedRouteDescriptor,
   components: Record<string, RoutesApiSchema>,
   datasources: ExpandedDatasourceType[],
+  settings: ISettings,
 ): { routes: RoutesApiRouteEntry[]; extra: Record<string, RoutesApiSchema> } => {
   const { collection, member } = nestedPaths(nested);
   const prefix = combinedPrefix(nested);
   if (nested.kind === "direct-fk") {
     const child = nested.child.name;
+    const table = datasources.find((d) => d.name === child);
+    const occ = table === undefined ? {} : occWrite(table, settings);
     const meta = { entity: child, isCustom: false };
     return {
       extra: {},
       routes: [
         entry(`${prefix}List`, { path: collection, method: "GET", response: child, ...meta }, components),
         entry(`${prefix}Create`, { path: collection, method: "POST", request: `update_${child}`, response: child, ...meta }, components),
-        entry(`${prefix}Update`, { path: member, method: "PUT", request: `update_${child}`, response: child, ...meta }, components),
-        entry(`${prefix}Delete`, { path: member, method: "DELETE", ...meta }, components),
+        entry(`${prefix}Update`, { path: member, method: "PUT", request: `update_${child}`, response: child, ...meta, ...occ }, components),
+        entry(`${prefix}Delete`, { path: member, method: "DELETE", ...meta, ...occ }, components),
       ],
     };
   }
@@ -558,6 +589,7 @@ const parentCrudEntries = (
     datasources: ExpandedDatasourceType[];
     eager: Set<string>;
     components: Record<string, RoutesApiSchema>;
+    settings: ISettings;
   },
 ): RoutesApiRouteEntry[] => {
   const ds = args.datasources.find((d) => d.name === parent);
@@ -605,11 +637,18 @@ const parseRoutesApi = (args: {
   views: ViewType[];
   datasources: ExpandedDatasourceType[];
   routesYaml: string;
+  settings: ISettings;
 }): RoutesApiDoc => {
   const components = buildComponents(args.views, args.datasources);
   const eager = eagerRoots(args.routesYaml);
   const routedParents = combinedParentsWithRoute(args.routesYaml);
   const routes: RoutesApiRouteEntry[] = [];
+  const crudArgs = {
+    datasources: args.datasources,
+    eager,
+    components,
+    settings: args.settings,
+  };
 
   for (const custom of args.parsed.customs) {
     const item = customEntry(custom, components);
@@ -620,13 +659,7 @@ const parseRoutesApi = (args: {
     if (candidate.kind !== "datasource_type") continue;
     if (isEagerName(candidate.name)) continue;
     if (routedParents.has(candidate.name)) continue;
-    routes.push(
-      ...crudEntries(candidate, {
-        datasources: args.datasources,
-        eager,
-        components,
-      }),
-    );
+    routes.push(...crudEntries(candidate, crudArgs));
     const readonly = candidate.datasourceType === "readonly-lookup";
     for (const field of candidate.byFields) {
       routes.push(...byFieldEntries(candidate.name, field, readonly, components));
@@ -634,13 +667,7 @@ const parseRoutesApi = (args: {
   }
 
   for (const [parent, route] of routedParents) {
-    routes.push(
-      ...parentCrudEntries(parent, route, {
-        datasources: args.datasources,
-        eager,
-        components,
-      }),
-    );
+    routes.push(...parentCrudEntries(parent, route, crudArgs));
   }
 
   for (const nested of args.parsed.nested) {
@@ -648,6 +675,7 @@ const parseRoutesApi = (args: {
       nested,
       components,
       args.datasources,
+      args.settings,
     );
     Object.assign(components, extra);
     routes.push(...items);
@@ -669,5 +697,6 @@ export const loadRoutesApi = async (
     views: spec.viewTypes,
     datasources: spec.expandedDatasourceTypes,
     routesYaml,
+    settings: fromSettings(ctx.settings),
   });
 };

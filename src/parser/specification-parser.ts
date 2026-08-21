@@ -1,6 +1,7 @@
 import pluralize from "pluralize";
 import { parse as parseYaml } from "yaml";
 import type { IDeterministicReader } from "../deterministic-reader.ts";
+import { fromSettings } from "../settings.ts";
 import { compileRoutesFilter, compileServicesFilter } from "./compile-filter.ts";
 import { Deterministic, type IDeterministic } from "./deterministic.ts";
 import {
@@ -34,8 +35,10 @@ import {
   type ViewEnrichment,
   type ViewType,
 } from "./specification.ts";
-import { isRecord } from "../yaml-entry.ts";
 import { YamlNode } from "../yaml-node.ts";
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
 export type { IDeterministic } from "./deterministic.ts";
 
@@ -236,7 +239,7 @@ class Parser {
     const expandedDatasourceTypes = expandDatasourceTypes(
       datasources,
       idType,
-      settings["datasource.use_optimistic_concurrency"] !== "false",
+      fromSettings(settings).usesOptimisticConcurrency({}),
     );
     return new Deterministic({
       datasourceTypes: datasources,
@@ -1143,7 +1146,17 @@ class Parser {
       if (this.#parseByFieldEntry(entry.value, dsByName) !== null) continue;
       const [name] = Object.keys(entry.record);
       if (name === undefined) continue;
-      customs.push({ entry: entry.record, name });
+      const node = entry.child(name);
+      customs.push({
+        name,
+        path: node.str("path"),
+        method: node.str("method"),
+        entity: node.str("entity") ?? null,
+        request: node.str("request"),
+        response: node.str("response"),
+        module: node.str("module"),
+        routeClass: node.str("routeClass"),
+      });
     }
     return customs;
   }

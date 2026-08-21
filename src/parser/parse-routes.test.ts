@@ -3,7 +3,6 @@ import { describe, it } from "node:test";
 import { memoryReader } from "../deterministic-reader.ts";
 import {
   DATASOURCE_TYPES_YAML,
-  entityUsesOptimisticConcurrency,
   ROUTES_YAML,
   VIEW_TYPES_YAML,
 } from "./specification.ts";
@@ -89,10 +88,7 @@ describe("parseRoutes", () => {
 routes: []`);
 
     assert.equal(parsed.customs[0]?.name, "getHealth");
-    assert.equal(
-      (parsed.customs[0]?.entry.getHealth as { path?: string })?.path,
-      "/api/health",
-    );
+    assert.equal(parsed.customs[0]?.path, "/api/health");
   });
 
   it("returns empty candidates when view_type_routes is absent", async () => {
@@ -250,50 +246,6 @@ routes: []`,
     ).routes;
 
     assert.ok(!parsed.childrenOnly.has("tag"));
-  });
-});
-
-describe("entityUsesOptimisticConcurrency", () => {
-  it("returns false for junction and readonly-lookup tables", () => {
-    assert.equal(
-      entityUsesOptimisticConcurrency(
-        { datasourceType: "many-to-many" },
-        true,
-      ),
-      false,
-    );
-    assert.equal(
-      entityUsesOptimisticConcurrency(
-        { datasourceType: "readonly-lookup" },
-        true,
-      ),
-      false,
-    );
-  });
-
-  it("prefers explicit per-type flag over the global default", () => {
-    assert.equal(
-      entityUsesOptimisticConcurrency(
-        { datasourceType: "standard", optimisticConcurrency: false },
-        true,
-      ),
-      false,
-    );
-    assert.equal(
-      entityUsesOptimisticConcurrency(
-        { datasourceType: "standard", optimisticConcurrency: true },
-        false,
-      ),
-      true,
-    );
-    assert.equal(
-      entityUsesOptimisticConcurrency({ datasourceType: "standard" }, true),
-      true,
-    );
-    assert.equal(
-      entityUsesOptimisticConcurrency({ datasourceType: "standard" }, false),
-      false,
-    );
   });
 });
 

@@ -1,27 +1,139 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  CasingFactory,
-  LANGUAGE_CASING_DEFAULTS,
-  casingOverridesFromSettings,
-  toCase,
+  createCasingStrategy,
+  type ICasingStrategy,
 } from "./casing-strategy.ts";
 
-describe("toCase", () => {
-  it("splits snake, kebab, and camel input", () => {
-    assert.equal(toCase("notification_type", "Camel"), "notificationType");
-    assert.equal(toCase("notification-type", "Pascal"), "NotificationType");
-    assert.equal(toCase("notificationType", "Snake"), "notification_type");
-    assert.equal(toCase("NotificationType", "Kebab"), "notification-type");
+type ResolvedFormat = "Camel" | "Pascal" | "Snake" | "Kebab";
+type Leaf = "file_names" | "types" | "fields" | "directories";
+
+const FORMATS: readonly ResolvedFormat[] = [
+  "Camel",
+  "Pascal",
+  "Snake",
+  "Kebab",
+];
+
+const LEAVES: readonly Leaf[] = [
+  "file_names",
+  "types",
+  "fields",
+  "directories",
+];
+
+const convert = (
+  casing: ICasingStrategy,
+  leaf: Leaf,
+  text: string,
+): string => {
+  switch (leaf) {
+    case "file_names":
+      return casing.convertFileName(text);
+    case "types":
+      return casing.convertTypes(text);
+    case "fields":
+      return casing.convertFields(text);
+    case "directories":
+      return casing.convertDirectories(text);
+  }
+};
+
+const EXPECTED: Record<string, Record<ResolvedFormat, string>> = {
+  notification_type: {
+    Camel: "notificationType",
+    Pascal: "NotificationType",
+    Snake: "notification_type",
+    Kebab: "notification-type",
+  },
+  "notification-type": {
+    Camel: "notificationType",
+    Pascal: "NotificationType",
+    Snake: "notification_type",
+    Kebab: "notification-type",
+  },
+  notificationType: {
+    Camel: "notificationType",
+    Pascal: "NotificationType",
+    Snake: "notification_type",
+    Kebab: "notification-type",
+  },
+  NotificationType: {
+    Camel: "notificationType",
+    Pascal: "NotificationType",
+    Snake: "notification_type",
+    Kebab: "notification-type",
+  },
+  role_id: {
+    Camel: "roleId",
+    Pascal: "RoleId",
+    Snake: "role_id",
+    Kebab: "role-id",
+  },
+  xml_http_request: {
+    Camel: "xmlHttpRequest",
+    Pascal: "XmlHttpRequest",
+    Snake: "xml_http_request",
+    Kebab: "xml-http-request",
+  },
+  HTTPResponse: {
+    Camel: "httpResponse",
+    Pascal: "HttpResponse",
+    Snake: "http_response",
+    Kebab: "http-response",
+  },
+  user: {
+    Camel: "user",
+    Pascal: "User",
+    Snake: "user",
+    Kebab: "user",
+  },
+  a: {
+    Camel: "a",
+    Pascal: "A",
+    Snake: "a",
+    Kebab: "a",
+  },
+};
+
+describe("createCasingStrategy conversion matrix", () => {
+  for (const input of Object.keys(EXPECTED)) {
+    for (const format of FORMATS) {
+      for (const leaf of LEAVES) {
+        it(`${JSON.stringify(input)} × ${format} × ${leaf}`, () => {
+          const casing = createCasingStrategy("typescript", {
+            [`languages.typescript.casing.${leaf}`]: format,
+          });
+          assert.equal(convert(casing, leaf, input), EXPECTED[input]![format]);
+        });
+      }
+    }
+  }
+
+  it('returns "" unchanged for every format and leaf', () => {
+    for (const format of FORMATS) {
+      for (const leaf of LEAVES) {
+        const casing = createCasingStrategy("typescript", {
+          [`languages.typescript.casing.${leaf}`]: format,
+        });
+        assert.equal(convert(casing, leaf, ""), "");
+      }
+    }
   });
 
-  it("returns the original string when there are no words", () => {
-    assert.equal(toCase("", "Camel"), "");
-    assert.equal(toCase("   ", "Snake"), "   ");
+  it('returns "   " unchanged for every format and leaf', () => {
+    for (const format of FORMATS) {
+      for (const leaf of LEAVES) {
+        const casing = createCasingStrategy("typescript", {
+          [`languages.typescript.casing.${leaf}`]: format,
+        });
+        assert.equal(convert(casing, leaf, "   "), "   ");
+      }
+    }
   });
 });
 
-describe("CasingFactory Auto defaults", () => {
+describe("createCasingStrategy Auto defaults", () => {
   const samples: Array<{
     language: string;
     file: string;
@@ -89,7 +201,7 @@ describe("CasingFactory Auto defaults", () => {
 
   for (const sample of samples) {
     it(`uses Default Casings for ${sample.language} when overrides are omitted`, () => {
-      const casing = CasingFactory.create(sample.language);
+      const casing = createCasingStrategy(sample.language);
       assert.equal(casing.convertFileName("notification_type"), sample.file);
       assert.equal(casing.convertTypes("notification_type"), sample.type);
       assert.equal(casing.convertFields("notification_type"), sample.field);
@@ -101,12 +213,12 @@ describe("CasingFactory Auto defaults", () => {
   }
 
   it("treats Auto the same as an omitted override", () => {
-    const omitted = CasingFactory.create("typescript");
-    const explicit = CasingFactory.create("typescript", {
-      file_names: "Auto",
-      types: "auto",
-      fields: "AUTO",
-      directories: "Auto",
+    const omitted = createCasingStrategy("typescript");
+    const explicit = createCasingStrategy("typescript", {
+      "languages.typescript.casing.file_names": "Auto",
+      "languages.typescript.casing.types": "auto",
+      "languages.typescript.casing.fields": "AUTO",
+      "languages.typescript.casing.directories": "Auto",
     });
     assert.equal(
       omitted.convertFileName("project_setting"),
@@ -126,24 +238,64 @@ describe("CasingFactory Auto defaults", () => {
     );
   });
 
+  it("treats an empty settings value as Auto", () => {
+    const omitted = createCasingStrategy("typescript");
+    const blank = createCasingStrategy("typescript", {
+      "languages.typescript.casing.file_names": "",
+      "languages.typescript.casing.types": "",
+      "languages.typescript.casing.fields": "",
+      "languages.typescript.casing.directories": "",
+    });
+    assert.equal(
+      omitted.convertFileName("role_id"),
+      blank.convertFileName("role_id"),
+    );
+    assert.equal(omitted.convertTypes("role_id"), blank.convertTypes("role_id"));
+    assert.equal(
+      omitted.convertFields("role_id"),
+      blank.convertFields("role_id"),
+    );
+    assert.equal(
+      omitted.convertDirectories("role_id"),
+      blank.convertDirectories("role_id"),
+    );
+  });
+
   it("resolves language aliases", () => {
     assert.equal(
-      CasingFactory.create("ts").convertFields("role_id"),
-      CasingFactory.create("typescript").convertFields("role_id"),
+      createCasingStrategy("ts").convertFields("role_id"),
+      createCasingStrategy("typescript").convertFields("role_id"),
     );
     assert.equal(
-      CasingFactory.create("C#").convertFields("role_id"),
+      createCasingStrategy("TypeScript").convertFields("role_id"),
+      createCasingStrategy("typescript").convertFields("role_id"),
+    );
+    assert.equal(
+      createCasingStrategy("js").convertFields("role_id"),
+      createCasingStrategy("javascript").convertFields("role_id"),
+    );
+    assert.equal(
+      createCasingStrategy("py").convertFields("role_id"),
+      createCasingStrategy("python").convertFields("role_id"),
+    );
+    assert.equal(createCasingStrategy("C#").convertFields("role_id"), "RoleId");
+    assert.equal(createCasingStrategy("cs").convertFields("role_id"), "RoleId");
+    assert.equal(
+      createCasingStrategy("c_sharp").convertFields("role_id"),
       "RoleId",
     );
-    assert.equal(CasingFactory.create("rs").convertFileName("user_service"), "userService");
+    assert.equal(
+      createCasingStrategy("rs").convertFileName("user_service"),
+      "userService",
+    );
   });
 });
 
-describe("CasingFactory overrides", () => {
+describe("createCasingStrategy overrides", () => {
   it("applies per-leaf overrides without changing the others", () => {
-    const casing = CasingFactory.create("typescript", {
-      file_names: "Pascal",
-      fields: "Camel",
+    const casing = createCasingStrategy("typescript", {
+      "languages.typescript.casing.file_names": "Pascal",
+      "languages.typescript.casing.fields": "Camel",
     });
     assert.equal(casing.convertFileName("notification_type"), "NotificationType");
     assert.equal(casing.convertTypes("notification_type"), "NotificationType");
@@ -155,13 +307,16 @@ describe("CasingFactory overrides", () => {
   });
 
   it("accepts snake, kebab, pascal, and camel overrides", () => {
-    const casing = CasingFactory.create("rust", {
-      file_names: "Snake",
-      types: "Kebab",
-      fields: "Pascal",
-      directories: "Camel",
+    const casing = createCasingStrategy("rust", {
+      "languages.rust.casing.file_names": "Snake",
+      "languages.rust.casing.types": "Kebab",
+      "languages.rust.casing.fields": "Pascal",
+      "languages.rust.casing.directories": "Camel",
     });
-    assert.equal(casing.convertFileName("NotificationType"), "notification_type");
+    assert.equal(
+      casing.convertFileName("NotificationType"),
+      "notification_type",
+    );
     assert.equal(casing.convertTypes("notification_type"), "notification-type");
     assert.equal(casing.convertFields("notification_type"), "NotificationType");
     assert.equal(
@@ -177,10 +332,7 @@ describe("CasingFactory overrides", () => {
       "languages.typescript.casing.fields": "Pascal",
       "languages.typescript.casing.directories": "Pascal",
     };
-    const casing = CasingFactory.create(
-      "typescript",
-      casingOverridesFromSettings(settings, "typescript"),
-    );
+    const casing = createCasingStrategy("typescript", settings);
     assert.equal(casing.convertFileName("user_summary"), "user-summary");
     assert.equal(casing.convertTypes("user_summary"), "user_summary");
     assert.equal(casing.convertFields("user_summary"), "UserSummary");
@@ -189,56 +341,20 @@ describe("CasingFactory overrides", () => {
 
   it("throws on an unknown language", () => {
     assert.throws(
-      () => CasingFactory.create("cobol"),
+      () => createCasingStrategy("cobol"),
       /unknown language "cobol"/,
     );
   });
 
-  it("throws on an unknown case format", () => {
-    assert.throws(
-      () => CasingFactory.create("typescript", { file_names: "screaming" }),
-      /file_names must be one of/,
-    );
-  });
-});
-
-describe("LANGUAGE_CASING_DEFAULTS", () => {
-  it("matches the Default Casings table for file, field, and type names", () => {
-    assert.deepEqual(LANGUAGE_CASING_DEFAULTS.typescript, {
-      file_names: "Camel",
-      types: "Pascal",
-      fields: "Snake",
-      directories: "Camel",
+  for (const leaf of LEAVES) {
+    it(`throws on an unknown case format for ${leaf}`, () => {
+      assert.throws(
+        () =>
+          createCasingStrategy("typescript", {
+            [`languages.typescript.casing.${leaf}`]: "screaming",
+          }),
+        new RegExp(`${leaf} must be one of`),
+      );
     });
-    assert.deepEqual(LANGUAGE_CASING_DEFAULTS.javascript, {
-      file_names: "Camel",
-      types: "Pascal",
-      fields: "Camel",
-      directories: "Camel",
-    });
-    assert.deepEqual(LANGUAGE_CASING_DEFAULTS.csharp, {
-      file_names: "Camel",
-      types: "Pascal",
-      fields: "Pascal",
-      directories: "Camel",
-    });
-    assert.deepEqual(LANGUAGE_CASING_DEFAULTS.java, {
-      file_names: "Camel",
-      types: "Pascal",
-      fields: "Camel",
-      directories: "Camel",
-    });
-    assert.deepEqual(LANGUAGE_CASING_DEFAULTS.python, {
-      file_names: "Camel",
-      types: "Pascal",
-      fields: "Snake",
-      directories: "Camel",
-    });
-    assert.deepEqual(LANGUAGE_CASING_DEFAULTS.rust, {
-      file_names: "Camel",
-      types: "Pascal",
-      fields: "Snake",
-      directories: "Camel",
-    });
-  });
+  }
 });
