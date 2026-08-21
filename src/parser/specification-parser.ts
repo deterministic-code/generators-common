@@ -1,6 +1,6 @@
 import pluralize from "pluralize";
-import { parse as parseYaml } from "yaml";
 import type { IDeterministicReader } from "../deterministic-reader.ts";
+import { ensureHealth } from "../ensure-health.ts";
 import { fromSettings } from "../settings.ts";
 import { compileRoutesFilter, compileServicesFilter } from "./compile-filter.ts";
 import { Deterministic, type IDeterministic } from "./deterministic.ts";
@@ -115,9 +115,6 @@ const NON_DERIVABLE = [
   "_eager_row",
   "_eager_create_row",
 ] as const;
-const HEALTH_SERVICE_NAME = "HealthCheckService";
-const HEALTH_SERVICE_MODULE = "./services/custom/health-check-service";
-const HEALTH_ROUTE_PATH = "/api/health";
 const SHORTHAND_VERB_RE = /^(get|put|delete)_/i;
 const VERB_TO_METHODS: Record<string, string[]> = {
   get: ["GET"],
@@ -241,15 +238,17 @@ class Parser {
       idType,
       fromSettings(settings).usesOptimisticConcurrency({}),
     );
-    return new Deterministic({
-      datasourceTypes: datasources,
-      datasourceSeeds: seeds,
-      viewTypes: views,
-      expandedDatasourceTypes,
-      expandedViewTypes: expandViewTypes(views, expandedDatasourceTypes),
-      services,
-      routes,
-    });
+    return ensureHealth(
+      new Deterministic({
+        datasourceTypes: datasources,
+        datasourceSeeds: seeds,
+        viewTypes: views,
+        expandedDatasourceTypes,
+        expandedViewTypes: expandViewTypes(views, expandedDatasourceTypes),
+        services,
+        routes,
+      }),
+    );
   }
 
   #parseDatasourceTypes(args: { yaml: string; idType: string }): DatasourceType[] {
@@ -328,8 +327,7 @@ class Parser {
       if (name === undefined) return [];
       return [{ name, module: entry.str("module") }];
     });
-    const services = this.#ensureHealthServiceFirst(rawServices);
-    const customEntries = services.filter(
+    const customEntries = rawServices.filter(
       (s) =>
         !(
           typeof s.module === "string" &&
@@ -363,8 +361,7 @@ class Parser {
     views: ViewType[];
     datasources: DatasourceType[];
   }): ParsedRoutes {
-    const routesDoc = this.#ensureHealthRouteFirst(parseYaml(args.routesYaml));
-    const root = new YamlNode(routesDoc);
+    const root = YamlNode.fromYaml(args.routesYaml);
     const dsByName = new Map(args.datasources.map((d) => [d.name, d] as const));
     const allCandidates = this.#routeCandidates(args.views, dsByName);
     const childrenOnly = this.#collectCombinedChildNames(root, dsByName);
@@ -747,21 +744,6 @@ class Parser {
     return undefined;
   }
 
-  #ensureHealthServiceFirst(
-    services: Array<{ name: string; module?: string }>,
-  ): Array<{ name: string; module?: string }> {
-    const seed = {
-      name: HEALTH_SERVICE_NAME,
-      module: HEALTH_SERVICE_MODULE,
-    };
-    const idx = services.findIndex((s) => s.name === HEALTH_SERVICE_NAME);
-    if (idx === 0) return [...services];
-    if (idx > 0) {
-      return [services[idx]!, ...services.slice(0, idx), ...services.slice(idx + 1)];
-    }
-    return [seed, ...services];
-  }
-
   #collectRouteServiceMethods(
     routesYaml: string | undefined,
   ): Map<string, Set<string>> {
@@ -853,39 +835,6 @@ class Parser {
 
   #defaultChildSegment(name: string): string {
     return `/${specPlural(name)}`;
-  }
-
-  #findHealthRouteIndex(routes: unknown[]): number {
-    for (let i = 0; i < routes.length; i++) {
-      const entry = routes[i];
-      if (!isRecord(entry)) continue;
-      for (const def of Object.values(entry)) {
-        if (isRecord(def) && def.path === HEALTH_ROUTE_PATH) return i;
-      }
-    }
-    return -1;
-  }
-
-  #ensureHealthRouteFirst(routesDoc: unknown): Record<string, unknown> {
-    const seed = {
-      getHealth: {
-        method: "GET",
-        path: HEALTH_ROUTE_PATH,
-        service: HEALTH_SERVICE_NAME,
-        serviceMethod: "check",
-      },
-    };
-    if (!isRecord(routesDoc)) return { routes: [seed] };
-    const routes = Array.isArray(routesDoc.routes) ? routesDoc.routes : [];
-    const idx = this.#findHealthRouteIndex(routes);
-    if (idx === 0) return { ...routesDoc, routes: [...routes] };
-    if (idx > 0) {
-      return {
-        ...routesDoc,
-        routes: [routes[idx]!, ...routes.slice(0, idx), ...routes.slice(idx + 1)],
-      };
-    }
-    return { ...routesDoc, routes: [seed, ...routes] };
   }
 
   #columnIsUnique(ds: DatasourceType, columnName: string): boolean {

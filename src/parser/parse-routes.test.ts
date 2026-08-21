@@ -89,6 +89,7 @@ routes: []`);
 
     assert.equal(parsed.customs[0]?.name, "getHealth");
     assert.equal(parsed.customs[0]?.path, "/api/health");
+    assert.equal(parsed.customs[0]?.method, "GET");
   });
 
   it("returns empty candidates when view_type_routes is absent", async () => {
