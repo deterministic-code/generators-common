@@ -189,13 +189,18 @@ class CasingStrategy implements ICasingStrategy {
   }
 }
 
+export type CasingStrategyOptions = {
+  prefix?: string;
+};
+
 export const createCasingStrategy = (
   language: string,
   settings: Record<string, string> = {},
+  options?: CasingStrategyOptions,
 ): ICasingStrategy => {
   const lang = resolveCasingLanguage(language);
   const defaults = LANGUAGE_CASING_DEFAULTS[lang];
-  const prefix = `languages.${lang}.casing`;
+  const prefix = options?.prefix ?? `languages.${lang}.casing`;
   return new CasingStrategy({
     file_names: resolveLeaf(
       parseCaseFormat(settings[`${prefix}.file_names`], `${prefix}.file_names`),
