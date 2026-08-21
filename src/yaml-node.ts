@@ -1,110 +1,88 @@
 import { parse } from "yaml";
 
 type YamlLiteral = string | number | boolean | null;
+type YamlMap = { readonly [key: string]: YamlValue };
+type YamlValue = YamlLiteral | YamlValue[] | YamlMap;
+type Named = { name: string; node: YamlNode };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+const isMap = (v: YamlValue | undefined): v is YamlMap =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+const isString = (v: YamlValue | undefined): v is string => typeof v === "string";
+
+const isFiniteNumber = (v: YamlValue | undefined): v is number =>
+  typeof v === "number" && Number.isFinite(v);
+
+const isFiniteInt = (v: YamlValue | undefined): v is number =>
+  isFiniteNumber(v) && Number.isInteger(v);
+
+const isLiteral = (v: YamlValue | undefined): v is YamlLiteral =>
+  v === null ||
+  typeof v === "string" ||
+  typeof v === "number" ||
+  typeof v === "boolean";
 
 /** Typed cursor over a YAML value. Missing keys are empty nodes, not throws. */
-export class YamlNode {
-  readonly value: unknown;
+export type YamlNode = {
+  readonly value: YamlValue | undefined;
   readonly path: string;
+  readonly record: YamlMap | undefined;
+  child: (key: string) => YamlNode;
+  has: (key: string) => boolean;
+  str: (key: string) => string | undefined;
+  bool: (key: string) => boolean;
+  finiteNumber: (key: string) => number | undefined;
+  finiteInt: (key: string) => number | undefined;
+  literal: (key: string) => YamlLiteral | undefined;
+  strings: (key: string) => string[];
+  items: () => YamlNode[];
+  namedItems: () => Named[];
+  namedList: (key: string) => Named[];
+};
 
-  constructor(value: unknown, path = "$") {
-    this.value = value;
-    this.path = path;
-  }
-
-  static fromYaml(text: string, path = "$"): YamlNode {
-    return new YamlNode(parse(text), path);
-  }
-
-  get record(): Record<string, unknown> | undefined {
-    return isRecord(this.value) ? this.value : undefined;
-  }
-
-  child(key: string): YamlNode {
-    const rec = this.record;
-    return new YamlNode(
-      rec === undefined ? undefined : rec[key],
-      `${this.path}.${key}`,
-    );
-  }
-
-  has(key: string): boolean {
-    const rec = this.record;
-    return rec !== undefined && Object.prototype.hasOwnProperty.call(rec, key);
-  }
-
-  str(key: string): string | undefined {
-    const value = this.child(key).value;
-    return typeof value === "string" ? value : undefined;
-  }
-
-  bool(key: string): boolean {
-    return this.child(key).value === true;
-  }
-
-  finiteNumber(key: string): number | undefined {
-    const value = this.child(key).value;
-    return typeof value === "number" && Number.isFinite(value)
-      ? value
-      : undefined;
-  }
-
-  finiteInt(key: string): number | undefined {
-    const value = this.child(key).value;
-    return typeof value === "number" &&
-      Number.isFinite(value) &&
-      Number.isInteger(value)
-      ? value
-      : undefined;
-  }
-
-  literal(key: string): YamlLiteral | undefined {
-    const value = this.child(key).value;
-    if (value === null) return null;
-    if (
-      typeof value === "string" ||
-      typeof value === "number" ||
-      typeof value === "boolean"
-    ) {
-      return value;
-    }
-    return undefined;
-  }
-
-  strings(key: string): string[] {
-    const value = this.child(key).value;
-    return Array.isArray(value)
-      ? value.filter((item): item is string => typeof item === "string")
+const yamlNode = (value: YamlValue | undefined, path = "$"): YamlNode => {
+  const record = isMap(value) ? value : undefined;
+  const at = (key: string) => record?.[key];
+  const pick =
+    <T extends YamlValue>(pred: (v: YamlValue | undefined) => v is T) =>
+    (key: string): T | undefined => {
+      const v = at(key);
+      return pred(v) ? v : undefined;
+    };
+  const child = (key: string) => yamlNode(at(key), `${path}.${key}`);
+  const items = () =>
+    Array.isArray(value)
+      ? value.map((item, i) => yamlNode(item, `${path}[${i}]`))
       : [];
-  }
+  return {
+    value,
+    path,
+    record,
+    child,
+    has: (key) =>
+      record !== undefined && Object.prototype.hasOwnProperty.call(record, key),
+    str: pick(isString),
+    bool: (key) => at(key) === true,
+    finiteNumber: pick(isFiniteNumber),
+    finiteInt: pick(isFiniteInt),
+    literal: pick(isLiteral),
+    strings: (key) => {
+      const v = at(key);
+      return Array.isArray(v) ? v.filter(isString) : [];
+    },
+    items,
+    namedItems: () =>
+      items().flatMap((item) => {
+        const [name, body] = Object.entries(item.record ?? {})[0] ?? [];
+        return name === undefined
+          ? []
+          : [{ name, node: yamlNode(body, `${item.path}.${name}`) }];
+      }),
+    namedList: (key) => child(key).namedItems(),
+  };
+};
 
-  items(): YamlNode[] {
-    return Array.isArray(this.value)
-      ? this.value.map(
-          (item, index) => new YamlNode(item, `${this.path}[${index}]`),
-        )
-      : [];
-  }
-
-  namedItems(): Array<{ name: string; node: YamlNode }> {
-    return this.items().flatMap((item) => {
-      const rec = item.record;
-      if (rec === undefined) return [];
-      const name = Object.keys(rec)[0];
-      if (name === undefined) return [];
-      return [
-        {
-          name,
-          node: new YamlNode(rec[name], `${item.path}.${name}`),
-        },
-      ];
-    });
-  }
-
-  namedList(key: string): Array<{ name: string; node: YamlNode }> {
-    return this.child(key).namedItems();
-  }
-}
+export const YamlNode = Object.assign(yamlNode, {
+  fromYaml: (text: string, path = "$") =>
+    yamlNode(parse(text) as YamlValue, path),
+});
