@@ -35,4 +35,5 @@ export type IImportGenerator = {
     fn: string,
   ) => string;
   apiPath: (entity: string) => string;
+  frontend: (relPath: string) => string;
 };

@@ -1,15 +1,8 @@
-export type CaseFormat = "Camel" | "Pascal" | "Snake" | "Kebab" | "Auto";
+type CaseFormat = "Camel" | "Pascal" | "Snake" | "Kebab" | "Auto";
 
-export type ResolvedCaseFormat = Exclude<CaseFormat, "Auto">;
+type ResolvedCaseFormat = Exclude<CaseFormat, "Auto">;
 
-export type CasingOverrides = {
-  file_names?: string;
-  types?: string;
-  fields?: string;
-  directories?: string;
-};
-
-export type LanguageCasingDefaults = {
+type LanguageCasingDefaults = {
   file_names: ResolvedCaseFormat;
   types: ResolvedCaseFormat;
   fields: ResolvedCaseFormat;
@@ -23,7 +16,7 @@ export type ICasingStrategy = {
   convertDirectories: (text: string) => string;
 };
 
-export const CASE_FORMATS: readonly CaseFormat[] = [
+const CASE_FORMATS: readonly CaseFormat[] = [
   "Camel",
   "Pascal",
   "Snake",
@@ -32,7 +25,7 @@ export const CASE_FORMATS: readonly CaseFormat[] = [
 ];
 
 /** Auto defaults from the Default Casings table. Directories follow file names. */
-export const LANGUAGE_CASING_DEFAULTS = {
+const LANGUAGE_CASING_DEFAULTS = {
   typescript: {
     file_names: "Camel",
     types: "Pascal",
@@ -83,7 +76,7 @@ export const LANGUAGE_CASING_DEFAULTS = {
   },
 } as const satisfies Record<string, LanguageCasingDefaults>;
 
-export type CasingLanguage = keyof typeof LANGUAGE_CASING_DEFAULTS;
+type CasingLanguage = keyof typeof LANGUAGE_CASING_DEFAULTS;
 
 const LANGUAGE_ALIASES: Record<string, CasingLanguage> = {
   ts: "typescript",
@@ -123,7 +116,7 @@ const wordsOf = (name: string): string[] =>
 const cap = (word: string): string =>
   word.length === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1);
 
-export const toCase = (name: string, format: ResolvedCaseFormat): string => {
+const toCase = (name: string, format: ResolvedCaseFormat): string => {
   const words = wordsOf(name);
   if (words.length === 0) return name;
   switch (format) {
@@ -149,13 +142,13 @@ const parseCaseFormat = (raw: string | undefined, path: string): CaseFormat => {
   return parsed;
 };
 
-export const resolveCasingLanguage = (language: string): CasingLanguage => {
+const resolveCasingLanguage = (language: string): CasingLanguage => {
   const key = language.toLowerCase().replace(/[\s_]/g, "");
   const resolved =
     LANGUAGE_ALIASES[key] ?? LANGUAGE_ALIASES[language.toLowerCase()];
   if (resolved === undefined || !(resolved in LANGUAGE_CASING_DEFAULTS)) {
     throw new Error(
-      `CasingFactory: unknown language "${language}". Valid: ${Object.keys(LANGUAGE_CASING_DEFAULTS).join(", ")}.`,
+      `createCasingStrategy: unknown language "${language}". Valid: ${Object.keys(LANGUAGE_CASING_DEFAULTS).join(", ")}.`,
     );
   }
   return resolved as CasingLanguage;
@@ -196,42 +189,29 @@ class CasingStrategy implements ICasingStrategy {
   }
 }
 
-export const casingOverridesFromSettings = (
-  settings: Record<string, string>,
+export const createCasingStrategy = (
   language: string,
-): CasingOverrides => ({
-  file_names: settings[`languages.${language}.casing.file_names`],
-  types: settings[`languages.${language}.casing.types`],
-  fields: settings[`languages.${language}.casing.fields`],
-  directories: settings[`languages.${language}.casing.directories`],
-});
-
-export const CasingFactory = {
-  create: (
-    language: string,
-    overrides?: CasingOverrides,
-  ): ICasingStrategy => {
-    const lang = resolveCasingLanguage(language);
-    const defaults = LANGUAGE_CASING_DEFAULTS[lang];
-    const prefix = `languages.${lang}.casing`;
-    const resolved: LanguageCasingDefaults = {
-      file_names: resolveLeaf(
-        parseCaseFormat(overrides?.file_names, `${prefix}.file_names`),
-        defaults.file_names,
-      ),
-      types: resolveLeaf(
-        parseCaseFormat(overrides?.types, `${prefix}.types`),
-        defaults.types,
-      ),
-      fields: resolveLeaf(
-        parseCaseFormat(overrides?.fields, `${prefix}.fields`),
-        defaults.fields,
-      ),
-      directories: resolveLeaf(
-        parseCaseFormat(overrides?.directories, `${prefix}.directories`),
-        defaults.directories,
-      ),
-    };
-    return new CasingStrategy(resolved);
-  },
+  settings: Record<string, string> = {},
+): ICasingStrategy => {
+  const lang = resolveCasingLanguage(language);
+  const defaults = LANGUAGE_CASING_DEFAULTS[lang];
+  const prefix = `languages.${lang}.casing`;
+  return new CasingStrategy({
+    file_names: resolveLeaf(
+      parseCaseFormat(settings[`${prefix}.file_names`], `${prefix}.file_names`),
+      defaults.file_names,
+    ),
+    types: resolveLeaf(
+      parseCaseFormat(settings[`${prefix}.types`], `${prefix}.types`),
+      defaults.types,
+    ),
+    fields: resolveLeaf(
+      parseCaseFormat(settings[`${prefix}.fields`], `${prefix}.fields`),
+      defaults.fields,
+    ),
+    directories: resolveLeaf(
+      parseCaseFormat(settings[`${prefix}.directories`], `${prefix}.directories`),
+      defaults.directories,
+    ),
+  });
 };

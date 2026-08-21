@@ -1,7 +1,9 @@
 import { parse } from "yaml";
-import { isFiniteInt, isFiniteNumber, isRecord } from "./yaml-entry.ts";
 
 type YamlLiteral = string | number | boolean | null;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** Typed cursor over a YAML value. Missing keys are empty nodes, not throws. */
 export class YamlNode {
@@ -45,12 +47,18 @@ export class YamlNode {
 
   finiteNumber(key: string): number | undefined {
     const value = this.child(key).value;
-    return isFiniteNumber(value) ? value : undefined;
+    return typeof value === "number" && Number.isFinite(value)
+      ? value
+      : undefined;
   }
 
   finiteInt(key: string): number | undefined {
     const value = this.child(key).value;
-    return isFiniteInt(value) ? value : undefined;
+    return typeof value === "number" &&
+      Number.isFinite(value) &&
+      Number.isInteger(value)
+      ? value
+      : undefined;
   }
 
   literal(key: string): YamlLiteral | undefined {

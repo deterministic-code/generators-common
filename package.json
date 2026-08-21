@@ -9,9 +9,57 @@
   "type": "module",
   "exports": {
     "./package.json": "./package.json",
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "import": "./dist/*.js"
+    "./base-type-converter": {
+      "types": "./dist/base-type-converter.d.ts",
+      "import": "./dist/base-type-converter.js"
+    },
+    "./casing-strategy": {
+      "types": "./dist/casing-strategy.d.ts",
+      "import": "./dist/casing-strategy.js"
+    },
+    "./default-token": {
+      "types": "./dist/default-token.d.ts",
+      "import": "./dist/default-token.js"
+    },
+    "./deterministic-reader": {
+      "types": "./dist/deterministic-reader.d.ts",
+      "import": "./dist/deterministic-reader.js"
+    },
+    "./fill": {
+      "types": "./dist/fill.d.ts",
+      "import": "./dist/fill.js"
+    },
+    "./generate-context": {
+      "types": "./dist/generate-context.d.ts",
+      "import": "./dist/generate-context.js"
+    },
+    "./generate-entry": {
+      "types": "./dist/generate-entry.d.ts",
+      "import": "./dist/generate-entry.js"
+    },
+    "./import-generator": {
+      "types": "./dist/import-generator.d.ts",
+      "import": "./dist/import-generator.js"
+    },
+    "./routes-api": {
+      "types": "./dist/routes-api.d.ts",
+      "import": "./dist/routes-api.js"
+    },
+    "./routes-api-converter": {
+      "types": "./dist/routes-api-converter.d.ts",
+      "import": "./dist/routes-api-converter.js"
+    },
+    "./settings": {
+      "types": "./dist/settings.d.ts",
+      "import": "./dist/settings.js"
+    },
+    "./specification": {
+      "types": "./dist/specification.d.ts",
+      "import": "./dist/specification.js"
+    },
+    "./specification-parser": {
+      "types": "./dist/specification-parser.d.ts",
+      "import": "./dist/specification-parser.js"
     }
   },
   "files": [
@@ -23,7 +71,7 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "prepare": "npm run build",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
-    "test": "node --experimental-strip-types --test src/parser/parse-datasource-types.test.ts src/parser/parse-view-types.test.ts src/parser/parse-services.test.ts src/parser/parse-routes.test.ts src/parser/specification-parser.test.ts src/routes-api-converter.test.ts src/casing-strategy.test.ts"
+    "test": "node --experimental-strip-types --test src/parser/parse-datasource-types.test.ts src/parser/parse-view-types.test.ts src/parser/parse-services.test.ts src/parser/parse-routes.test.ts src/parser/specification-parser.test.ts src/routes-api-converter.test.ts src/casing-strategy.test.ts src/settings.test.ts"
   },
   "dependencies": {
     "mustache": "^4.2.0",

@@ -1,4 +1,10 @@
-import type { JsonValue } from "./yaml-entry.ts";
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
 
 /** Contract version stamped on every expanded routes-api document. */
 export const ROUTES_API_VERSION = "1.0.0";
@@ -37,6 +43,8 @@ export type RoutesApiRouteDef = {
   byField?: string;
   byFieldUnique?: boolean;
   primaryKeyField?: string | null;
+  /** When true, this write requires `If-Match: <updated>` (PUT/PATCH/DELETE). */
+  optimisticConcurrency?: boolean;
 };
 
 /** Single-key `{ <routeName>: def }` map. */
@@ -51,3 +59,22 @@ export type RoutesApiDoc = {
   routes: RoutesApiRouteEntry[];
   components: Record<string, RoutesApiSchema>;
 };
+
+/** Flatten YAML-style single-key route maps into `[name, def]` pairs. */
+export const namedRoutes = (
+  routes: RoutesApiRouteEntry[],
+): Array<[string, RoutesApiRouteDef]> =>
+  routes.flatMap((item) => {
+    const name = Object.keys(item)[0];
+    const def = name === undefined ? undefined : item[name];
+    if (
+      name === undefined ||
+      def === null ||
+      typeof def !== "object" ||
+      typeof def.path !== "string" ||
+      typeof def.method !== "string"
+    ) {
+      return [];
+    }
+    return [[name, def]];
+  });
