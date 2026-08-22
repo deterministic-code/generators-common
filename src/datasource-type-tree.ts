@@ -1,5 +1,5 @@
 import { stringify } from "yaml";
-import type { DatasourceType } from "./parser/specification.ts";
+import type { DatasourceType } from "@deterministic-code/deterministic-specifications-typescript/parser";
 
 export type DatasourceTypeTree = { [name: string]: DatasourceTypeTree };
 
@@ -222,6 +222,70 @@ export const datasourceTypeHierarchies = (
   allParentsTree: datasourceTypeTreeAll(types),
   graph: datasourceTypeGraph(types),
 });
+
+/** Pre-order walk of the first-parent tree (parent before children, authored sibling order). */
+export const datasourceTypeOrder = (
+  types: readonly DatasourceType[],
+): string[] => {
+  const names: string[] = [];
+  const walk = (node: DatasourceTypeTree) => {
+    for (const [name, child] of Object.entries(node)) {
+      names.push(name);
+      walk(child);
+    }
+  };
+  walk(datasourceTypeTreeFirst(types)[ROOT] ?? {});
+  return names;
+};
+
+/**
+ * All in-set `references` parents of `name`, recursively, parent before child.
+ * Does not include `name`. Self-edges and cycles are skipped.
+ */
+export const datasourceTypeAncestry = (
+  types: readonly DatasourceType[],
+  name: string,
+): string[] => {
+  const parentLists = chosenParents(types, "all");
+  if (!parentLists.has(name)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const walk = (current: string, path: ReadonlySet<string>): void => {
+    for (const parent of parentLists.get(current) ?? []) {
+      if (path.has(parent) || seen.has(parent)) continue;
+      walk(parent, new Set([...path, current]));
+      if (seen.has(parent)) continue;
+      seen.add(parent);
+      out.push(parent);
+    }
+  };
+  walk(name, new Set([name]));
+  return out;
+};
+
+/** Rank by tree order; names that inherit a type sort just after that type. */
+export const compareByDatasourceTypeOrder = (
+  types: readonly DatasourceType[],
+  inheritOf: (name: string) => string | null | undefined = () => undefined,
+): ((a: string, b: string) => number) => {
+  const order = datasourceTypeOrder(types);
+  const rank = new Map(order.map((name, i) => [name, i]));
+  const key = (name: string): [number, string] => {
+    const direct = rank.get(name);
+    if (direct !== undefined) return [direct * 2, name];
+    const inherit = inheritOf(name);
+    if (inherit !== null && inherit !== undefined) {
+      const parent = rank.get(inherit);
+      if (parent !== undefined) return [parent * 2 + 1, name];
+    }
+    return [order.length * 2, name];
+  };
+  return (a, b) => {
+    const [ia, na] = key(a);
+    const [ib, nb] = key(b);
+    return ia - ib || na.localeCompare(nb);
+  };
+};
 
 export const datasourceTypeTreeYaml = (tree: DatasourceTypeTree): string =>
   stringify(tree);

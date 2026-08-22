@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  compareByDatasourceTypeOrder,
+  datasourceTypeAncestry,
   datasourceTypeGraph,
   datasourceTypeGraphJson,
   datasourceTypeGraphXml,
   datasourceTypeGraphYaml,
   datasourceTypeHierarchies,
+  datasourceTypeOrder,
   datasourceTypeTree,
   datasourceTypeTreeAll,
   datasourceTypeTreeFirst,
@@ -13,7 +16,7 @@ import {
   datasourceTypeTreeXml,
   datasourceTypeTreeYaml,
 } from "./datasource-type-tree.ts";
-import type { DatasourceType } from "./parser/specification.ts";
+import type { DatasourceType } from "@deterministic-code/deterministic-specifications-typescript/parser";
 
 const ds = (name: string, refs: string[] = []): DatasourceType => ({
   name,
@@ -335,6 +338,59 @@ describe("datasource type hierarchies", () => {
     assert.equal(datasourceTypeGraphYaml(graph), contactsGraphYaml);
     assert.equal(datasourceTypeGraphJson(graph), contactsGraphJson);
     assert.equal(datasourceTypeGraphXml(graph), contactsGraphXml);
+  });
+
+  it("walks the first-parent tree parent-before-child", () => {
+    assert.deepEqual(datasourceTypeOrder(contacts), [
+      "contact_source",
+      "contact",
+      "address",
+      "phone",
+      "contact_group_member",
+      "contact_group",
+      "legacy_contact",
+      "contact_change_log",
+    ]);
+  });
+
+  it("ranks an inheriting view just after its parent type", () => {
+    const compare = compareByDatasourceTypeOrder(
+      contacts,
+      (name) => (name === "contact_card" ? "contact" : undefined),
+    );
+    const names = [
+      "legacy_contact",
+      "contact_card",
+      "address",
+      "contact_source",
+    ].sort(compare);
+    assert.deepEqual(names, [
+      "contact_source",
+      "contact_card",
+      "address",
+      "legacy_contact",
+    ]);
+  });
+
+  it("lists all-parent ancestry parent-before-child without the subject", () => {
+    assert.deepEqual(datasourceTypeAncestry(contacts, "address"), [
+      "contact_source",
+      "contact",
+    ]);
+    assert.deepEqual(datasourceTypeAncestry(contacts, "contact_group_member"), [
+      "contact_source",
+      "contact",
+      "contact_group",
+    ]);
+    assert.deepEqual(datasourceTypeAncestry(contacts, "contact_source"), []);
+    assert.deepEqual(datasourceTypeAncestry(contacts, "missing"), []);
+  });
+
+  it("skips a cycle when collecting ancestry", () => {
+    assert.deepEqual(
+      datasourceTypeAncestry([ds("a", ["b.id"]), ds("b", ["a.id"])], "a"),
+      ["b"],
+    );
   });
 
   it("keeps cycle edges on the graph and does not force them onto root", () => {

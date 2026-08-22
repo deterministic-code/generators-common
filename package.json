@@ -1,7 +1,7 @@
 {
   "name": "@deterministic-code/generators-common",
   "version": "0.0.1",
-  "description": "Shared generator helpers: reader, entries, YAML, specification types, and template fill.",
+  "description": "Shared generator helpers: reader, entries, routes-api, and template fill.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/deterministic-code/generators-common.git"
@@ -24,10 +24,6 @@
     "./default-token": {
       "types": "./dist/default-token.d.ts",
       "import": "./dist/default-token.js"
-    },
-    "./ensure-health": {
-      "types": "./dist/ensure-health.d.ts",
-      "import": "./dist/ensure-health.js"
     },
     "./deterministic-reader": {
       "types": "./dist/deterministic-reader.d.ts",
@@ -64,14 +60,6 @@
     "./settings": {
       "types": "./dist/settings.d.ts",
       "import": "./dist/settings.js"
-    },
-    "./specification": {
-      "types": "./dist/specification.d.ts",
-      "import": "./dist/specification.js"
-    },
-    "./specification-parser": {
-      "types": "./dist/specification-parser.d.ts",
-      "import": "./dist/specification-parser.js"
     }
   },
   "files": [
@@ -83,9 +71,10 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "prepare": "npm run build",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
-    "test": "node --experimental-strip-types --test src/parser/parse-datasource-types.test.ts src/parser/parse-view-types.test.ts src/parser/parse-services.test.ts src/parser/parse-routes.test.ts src/parser/specification-parser.test.ts src/routes-api-converter.test.ts src/casing-strategy.test.ts src/settings.test.ts src/reference-verifier.test.ts src/datasource-type-tree.test.ts src/ensure-health.test.ts"
+    "test": "node --experimental-strip-types --test src/routes-api-converter.test.ts src/casing-strategy.test.ts src/settings.test.ts src/reference-verifier.test.ts src/datasource-type-tree.test.ts"
   },
   "dependencies": {
+    "@deterministic-code/deterministic-specifications-typescript": "github:deterministic-code/deterministic-specifications-typescript",
     "mustache": "^4.2.0",
     "pluralize": "^8.0.0",
     "yaml": "^2.6.0"

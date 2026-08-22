@@ -252,4 +252,33 @@ routes: []
     });
     assert.equal(routeOf(off.routes, "userUpdate").optimisticConcurrency, undefined);
   });
+
+  it("emits CRUD routes in first-parent datasource tree order", async () => {
+    const doc = await loadRoutesApi({
+      reader: memoryReader({
+        "datasource_types.yaml": `types:
+  - user:
+      fields:
+        - role_id:
+            type: number
+            references: role.id
+  - role:
+      fields:
+        - name:
+            type: string
+  - address:
+      fields:
+        - user_id:
+            type: number
+            references: user.id
+`,
+        "view_types.yaml": viewPassThrough,
+        "routes.yaml": crudRoutes,
+      }),
+      settings: {},
+    });
+    const names = doc.routes.map((entry) => Object.keys(entry)[0]);
+    const firstList = names.filter((name) => name?.endsWith("List"));
+    assert.deepEqual(firstList, ["roleList", "userList", "addressList"]);
+  });
 });
