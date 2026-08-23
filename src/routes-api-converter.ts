@@ -1,3 +1,4 @@
+/// <reference path="./pluralize-module.d.ts" />
 import pluralize from "pluralize";
 import { parse as parseYaml } from "yaml";
 import type { GenerateContext } from "./generate-context.ts";
