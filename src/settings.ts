@@ -1,6 +1,8 @@
 export type OccTable = {
   datasourceType?: string | null;
   optimisticConcurrency?: boolean;
+  tags?: readonly string[];
+  useOptimisticConcurrency?: boolean;
 };
 
 export const FRONTEND_FRAMEWORKS = [
@@ -53,8 +55,22 @@ export const fromSettings = (raw: Record<string, string>): ISettings => {
     createIndex: raw["codegen.create_index"] !== "false",
     libraryReferenceMode: raw["languages.typescript.library_reference_mode"],
     usesOptimisticConcurrency: (table) => {
-      if (table.datasourceType === "many-to-many") return false;
-      if (table.datasourceType === "readonly-lookup") return false;
+      const tags = table.tags ?? [];
+      if (
+        table.datasourceType === "many-to-many" ||
+        tags.includes("many_to_many")
+      ) {
+        return false;
+      }
+      if (
+        table.datasourceType === "readonly-lookup" ||
+        tags.includes("readonly_lookup")
+      ) {
+        return false;
+      }
+      if (table.useOptimisticConcurrency !== undefined) {
+        return table.useOptimisticConcurrency;
+      }
       if (table.optimisticConcurrency !== undefined) {
         return table.optimisticConcurrency;
       }
