@@ -39,17 +39,25 @@ export const tableKind = (type: Type): string => {
   return "standard";
 };
 
-type TypeKey = Pick<Type, "inherits" | "fields">;
+type TypeKey = {
+  inherits?: string;
+  fields: readonly (TypeField & { isId?: boolean })[];
+  ids?: readonly string[];
+};
+
+export const identityColumns = (type?: TypeKey): string[] => {
+  if (!type) return ["id"];
+  if (type.ids !== undefined && type.ids.length > 0) return [...type.ids];
+  const marked = type.fields.filter((f) => f.isId === true).map((f) => f.name);
+  if (marked.length > 0) return marked;
+  if (type.inherits === "set") return ["id"];
+  return [];
+};
 
 export const primaryKeyColumn = (
-  table: DatasourceTable | undefined,
-  type?: Pick<Type, "inherits">,
-): string => {
-  const fixed = table?.fields.find((f) => f.isFixedId);
-  if (fixed) return fixed.name;
-  if (type?.inherits === "set") return "id";
-  return "id";
-};
+  _table: DatasourceTable | undefined,
+  type?: TypeKey,
+): string => identityColumns(type)[0] ?? "id";
 
 export const pkName = (type: TypeKey, table?: DatasourceTable): string =>
   primaryKeyColumn(table, type);
@@ -57,8 +65,8 @@ export const pkName = (type: TypeKey, table?: DatasourceTable): string =>
 export const isPkField = (
   field: TypeField,
   type: TypeKey,
-  table?: DatasourceTable,
-): boolean => field.name === primaryKeyColumn(table, type);
+  _table?: DatasourceTable,
+): boolean => identityColumns(type).includes(field.name);
 
 export const uniqueLookupFields = (
   type: TypeKey,
@@ -74,9 +82,7 @@ export const uniqueLookupFields = (
       ...(typeof f?.size === "number" ? { size: f.size } : {}),
     });
   };
-  if (type.inherits === "set" || table?.fields.some((f) => f.isFixedId)) {
-    add(primaryKeyColumn(table, type));
-  }
+  for (const name of identityColumns(type)) add(name);
   for (const overlay of table?.fields ?? []) {
     if (overlay.isUnique) add(overlay.name);
   }
