@@ -79,14 +79,14 @@
   },
   "dependencies": {
     "@deterministic-code/deterministic-specifications-typescript": "github:deterministic-code/deterministic-specifications-typescript#slim-public-api",
+    "@types/mustache": "^4.2.6",
+    "@types/pluralize": "^0.0.33",
     "mustache": "^4.2.0",
     "pluralize": "^8.0.0",
     "yaml": "^2.6.0"
   },
   "devDependencies": {
-    "@types/mustache": "^4.2.6",
     "@types/node": "^22.10.0",
-    "@types/pluralize": "^0.0.33",
     "typescript": "^5.8.0"
   }
 }
