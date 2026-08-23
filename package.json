@@ -60,6 +60,10 @@
     "./settings": {
       "types": "./dist/settings.d.ts",
       "import": "./dist/settings.js"
+    },
+    "./spec-types": {
+      "types": "./dist/spec-types.d.ts",
+      "import": "./dist/spec-types.js"
     }
   },
   "files": [

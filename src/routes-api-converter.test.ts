@@ -3,16 +3,16 @@ import { describe, it } from "node:test";
 import { memoryReader } from "./deterministic-reader.ts";
 import { loadRoutesApi } from "./routes-api-converter.ts";
 
-const viewPassThrough = `includes:
-  - datasource_types:
-      include: "*"
-types: []
+const crudRoutes = `includes:
+  - types:
+      filter: tag == "view_type"
+routes: []
 `;
 
-const crudRoutes = `includes:
-  - view_type_routes:
-      filter: 'type is view_type || type is datasource_type'
-routes: []
+const datasourceInclude = `includes:
+  - types:
+      filter: tag == "datasource_type"
+types: []
 `;
 
 const routeOf = (
@@ -28,13 +28,15 @@ describe("loadRoutesApi", () => {
   it("expands simple CRUD onto snake collection and {id} member paths", async () => {
     const doc = await loadRoutesApi({
       reader: memoryReader({
-        "datasource_types.yaml": `types:
+        "types.yaml": `types:
   - user:
+      tags: [datasource_type, view_type]
+      inherits: set
       fields:
         - email:
             type: string
 `,
-        "view_types.yaml": viewPassThrough,
+        "datasource.yaml": datasourceInclude,
         "routes.yaml": crudRoutes,
       }),
       settings: {},
@@ -52,31 +54,39 @@ describe("loadRoutesApi", () => {
   it("expands by-field, readonly lookup, and unresolved custom bodies", async () => {
     const doc = await loadRoutesApi({
       reader: memoryReader({
-        "datasource_types.yaml": `types:
+        "types.yaml": `types:
   - role:
-      datasource_type: readonly-lookup
+      tags: [datasource_type, view_type, readonly_lookup]
+      inherits: set
       fields:
         - name:
             type: string
-            is_unique: true
   - user:
+      tags: [datasource_type, view_type]
+      inherits: set
       fields:
         - email:
             type: string
-            is_unique: true
         - role_id:
             type: number
             references: role.id
 `,
-        "view_types.yaml": `includes:
-  - datasource_types:
-      include: "*"
-      auto_enrich: true
-types: []
+        "datasource.yaml": `includes:
+  - types:
+      filter: tag == "datasource_type"
+types:
+  - role:
+      fields:
+        - name:
+            is_unique: true
+  - user:
+      fields:
+        - email:
+            is_unique: true
 `,
         "routes.yaml": `includes:
-  - view_type_routes:
-      filter: 'type is view_type || type is datasource_type'
+  - types:
+      filter: tag == "view_type"
 routes:
   - users_by_email:
   - ping:
@@ -104,13 +114,16 @@ routes:
   it("expands nested combined routes with snake segments", async () => {
     const doc = await loadRoutesApi({
       reader: memoryReader({
-        "datasource_types.yaml": `types:
+        "types.yaml": `types:
   - project:
+      tags: [datasource_type, view_type]
+      inherits: set
       fields:
         - name:
             type: string
-            is_unique: true
   - task:
+      tags: [datasource_type, view_type]
+      inherits: set
       fields:
         - title:
             type: string
@@ -118,14 +131,14 @@ routes:
             type: number
             references: project.id
 `,
-        "view_types.yaml": viewPassThrough,
+        "datasource.yaml": datasourceInclude,
         "routes.yaml": `includes:
-  - view_type_routes:
-      filter: 'type is view_type || type is datasource_type'
+  - types:
+      filter: tag == "view_type"
 routes: []
 combined_routes:
   - project:
-      combined_types:
+      combines:
         - task
 `,
       }),
@@ -145,17 +158,21 @@ combined_routes:
   it("expands m2m combined routes and union view components", async () => {
     const doc = await loadRoutesApi({
       reader: memoryReader({
-        "datasource_types.yaml": `types:
+        "types.yaml": `types:
   - organization:
+      tags: [datasource_type, view_type]
+      inherits: set
       fields:
         - name:
             type: string
   - tag:
+      tags: [datasource_type, view_type]
+      inherits: set
       fields:
         - name:
             type: string
   - org_tag:
-      datasource_type: many-to-many
+      tags: [datasource_type, many_to_many]
       fields:
         - organization_id:
             type: number
@@ -163,22 +180,19 @@ combined_routes:
         - tag_id:
             type: number
             references: tag.id
-`,
-        "view_types.yaml": `includes:
-  - datasource_types:
-      include: "*"
-types:
   - search_result:
+      tags: [view_type]
       one_of:
         - organization
         - tag
 `,
+        "datasource.yaml": datasourceInclude,
         "routes.yaml": `includes:
-  - view_type_routes:
-      filter: 'type inherits datasource_types'
+  - types:
+      filter: tag == "view_type"
 combined_routes:
   - organization:
-      combined_types:
+      combines:
         - tag:
             via: org_tag
             target: tag
@@ -201,25 +215,39 @@ routes: []
 
   it("stamps optimisticConcurrency on member writes when OCC is on", async () => {
     const files = {
-      "datasource_types.yaml": `types:
+      "types.yaml": `types:
   - item:
-      use_optimistic_concurrency: true
+      tags: [datasource_type, view_type]
+      inherits: set
       fields:
         - name:
             type: string
   - log:
-      use_optimistic_concurrency: false
+      tags: [datasource_type, view_type]
+      inherits: set
       fields:
         - message:
             type: string
   - status:
-      datasource_type: readonly-lookup
+      tags: [datasource_type, view_type, readonly_lookup]
+      inherits: set
       fields:
         - name:
             type: string
+`,
+      "datasource.yaml": `includes:
+  - types:
+      filter: tag == "datasource_type"
+types:
+  - item:
+      use_optimistic_concurrency: true
+  - log:
+      use_optimistic_concurrency: false
+  - status:
+      fields:
+        - name:
             is_unique: true
 `,
-      "view_types.yaml": viewPassThrough,
       "routes.yaml": crudRoutes,
     };
     const on = await loadRoutesApi({
@@ -239,13 +267,15 @@ routes: []
 
     const off = await loadRoutesApi({
       reader: memoryReader({
-        "datasource_types.yaml": `types:
+        "types.yaml": `types:
   - user:
+      tags: [datasource_type, view_type]
+      inherits: set
       fields:
         - email:
             type: string
 `,
-        "view_types.yaml": viewPassThrough,
+        "datasource.yaml": datasourceInclude,
         "routes.yaml": crudRoutes,
       }),
       settings: { "datasource.use_optimistic_concurrency": "false" },
@@ -256,23 +286,29 @@ routes: []
   it("emits CRUD routes in first-parent datasource tree order", async () => {
     const doc = await loadRoutesApi({
       reader: memoryReader({
-        "datasource_types.yaml": `types:
+        "types.yaml": `types:
   - user:
+      tags: [datasource_type, view_type]
+      inherits: set
       fields:
         - role_id:
             type: number
             references: role.id
   - role:
+      tags: [datasource_type, view_type]
+      inherits: set
       fields:
         - name:
             type: string
   - address:
+      tags: [datasource_type, view_type]
+      inherits: set
       fields:
         - user_id:
             type: number
             references: user.id
 `,
-        "view_types.yaml": viewPassThrough,
+        "datasource.yaml": datasourceInclude,
         "routes.yaml": crudRoutes,
       }),
       settings: {},
@@ -280,5 +316,26 @@ routes: []
     const names = doc.routes.map((entry) => Object.keys(entry)[0]);
     const firstList = names.filter((name) => name?.endsWith("List"));
     assert.deepEqual(firstList, ["roleList", "userList", "addressList"]);
+  });
+
+  it("builds components from types.yaml when datasource.yaml is omitted", async () => {
+    const doc = await loadRoutesApi({
+      reader: memoryReader({
+        "types.yaml": `types:
+  - user:
+      tags: [datasource_type, view_type]
+      inherits: set
+      fields:
+        - email:
+            type: string
+`,
+        "routes.yaml": crudRoutes,
+      }),
+      settings: {},
+    });
+    assert.ok(doc.components.user);
+    assert.ok(doc.components.update_user);
+    assert.equal(routeOf(doc.routes, "userList").path, "/api/users");
+    assert.equal(routeOf(doc.routes, "userGet").path, "/api/users/{id}");
   });
 });

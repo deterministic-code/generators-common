@@ -98,6 +98,29 @@ describe("usesOptimisticConcurrency", () => {
       on.usesOptimisticConcurrency({ datasourceType: "readonly-lookup" }),
       false,
     );
+    assert.equal(
+      on.usesOptimisticConcurrency({ tags: ["many_to_many"] }),
+      false,
+    );
+    assert.equal(
+      on.usesOptimisticConcurrency({ tags: ["readonly_lookup"] }),
+      false,
+    );
+  });
+
+  it("prefers useOptimisticConcurrency over optimisticConcurrency", () => {
+    const on = fromSettings({});
+    assert.equal(
+      on.usesOptimisticConcurrency({
+        useOptimisticConcurrency: false,
+        optimisticConcurrency: true,
+      }),
+      false,
+    );
+    assert.equal(
+      on.usesOptimisticConcurrency({ useOptimisticConcurrency: true }),
+      true,
+    );
   });
 
   it("prefers explicit per-type flag over the global default", () => {

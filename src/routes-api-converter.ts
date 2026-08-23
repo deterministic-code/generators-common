@@ -5,18 +5,17 @@ import {
   DeterministicParser,
   ROUTES_YAML,
   primaryKeyColumn,
+  typeHasTag,
   type CustomRouteEntry,
-  type DatasourceField,
-  type DatasourceType,
+  type DatasourceTable,
   type NestedRouteDescriptor,
   type ParsedRoutes,
   type RouteByField,
   type RouteCandidate,
-  type ShapedView,
-  type ViewField,
-  type ViewType,
+  type Type,
+  type TypeField,
 } from "@deterministic-code/deterministic-specifications-typescript/parser";
-import { fromSettings, type ISettings } from "./settings.ts";
+import { fromSettings, type ISettings, type OccTable } from "./settings.ts";
 import {
   ROUTES_API_VERSION,
   type JsonValue,
@@ -65,14 +64,40 @@ const pascalIdent = (name: string): string => {
   return camel.length === 0 ? camel : camel[0]!.toUpperCase() + camel.slice(1);
 };
 
+const refString = (
+  references: TypeField["references"],
+): string | undefined =>
+  typeof references === "string" ? references : undefined;
+
 const pkTypeOf = (
   entity: string,
-  datasources: DatasourceType[],
+  types: Type[],
+  tables: DatasourceTable[],
 ): string => {
-  const table = datasources.find((d) => d.name === entity);
-  const col = primaryKeyColumn(table);
-  return table?.fields.find((f) => f.name === col)?.type ?? "integer";
+  const type = types.find((d) => d.name === entity);
+  const table = tables.find((d) => d.name === entity);
+  const col = primaryKeyColumn(table, type);
+  return type?.fields.find((f) => f.name === col)?.type ?? "integer";
 };
+
+const isReadonlyLookup = (type: Type | undefined): boolean =>
+  type !== undefined && typeHasTag(type, "readonly_lookup");
+
+const isManyToMany = (type: Type | undefined): boolean =>
+  type !== undefined && typeHasTag(type, "many_to_many");
+
+const isDatasourceType = (type: Type | undefined): boolean =>
+  type !== undefined && typeHasTag(type, "datasource_type");
+
+const occTable = (
+  type: Type | undefined,
+  table: DatasourceTable | undefined,
+): { tags?: string[]; useOptimisticConcurrency?: boolean } => ({
+  ...(type !== undefined ? { tags: type.tags } : {}),
+  ...(table?.useOptimisticConcurrency !== undefined
+    ? { useOptimisticConcurrency: table.useOptimisticConcurrency }
+    : {}),
+});
 
 const bracePath = (path: string): string =>
   path.replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, "{$1}");
@@ -142,126 +167,99 @@ const converterTypeForSchema = (schema: RoutesApiSchema): string => {
   return "string";
 };
 
-const datasourceFieldSchema = (field: DatasourceField): RoutesApiSchema => {
+const fieldSchema = (
+  field: TypeField,
+  pkName: string | undefined,
+): RoutesApiSchema => {
+  const references = refString(field.references);
   let schema: RoutesApiSchema;
   if (
-    field.isPrimaryKey === true ||
+    field.name === pkName ||
     field.name === "id" ||
-    field.references?.split(".")[1] === "id"
+    references?.split(".")[1] === "id"
   ) {
     schema = idSchema(field.type);
+  } else if (field.kind === "type") {
+    const ref = schemaRef(field.base);
+    schema = field.isArray ? { type: "array", items: ref } : ref;
   } else if (
-    field.references !== undefined &&
+    references !== undefined &&
     (field.type === "reference" || field.type === undefined)
   ) {
     schema = { type: "integer" };
   } else {
-    schema = schemaForPrimitive(field.type, field.size);
+    const size = typeof field.size === "number" ? field.size : undefined;
+    const inner = schemaForPrimitive(field.type, size);
+    schema = field.isArray ? { type: "array", items: inner } : inner;
   }
   if (field.isNullable) schema = { ...schema, nullable: true };
   if (field.hasDefault) schema = { ...schema, default: field.defaultValue };
-  if (field.references !== undefined && field.references.length > 0) {
-    schema = { ...schema, "x-references": field.references };
+  if (references !== undefined && references.length > 0) {
+    schema = { ...schema, "x-references": references };
   }
   return schema;
 };
 
-const viewFieldSchema = (field: ViewField): RoutesApiSchema => {
-  if (field.kind === "primitive") {
-    const inner = schemaForPrimitive(field.base, field.size);
-    if (field.isArray) return { type: "array", items: inner };
-    return field.isNullable ? { ...inner, nullable: true } : inner;
-  }
-  const ref = schemaRef(field.base);
-  return field.isArray ? { type: "array", items: ref } : ref;
-};
-
-const fieldIsRequired = (field: DatasourceField): boolean =>
+const fieldIsRequired = (field: TypeField): boolean =>
   field.isNullable !== true && field.hasDefault !== true;
 
-const omitForView = (
-  view: ShapedView,
-  dsType: DatasourceType | undefined,
-): Set<string> => {
-  const omit = new Set(view.omit);
-  if (dsType?.datasourceType === "readonly-lookup") {
-    omit.add("uuid");
-    omit.add("created");
-    omit.add("updated");
-  }
-  if (dsType?.fields.some((f) => f.isPrimaryKey === true && f.name !== "id")) {
-    const declared = new Set(dsType.fields.map((f) => f.name));
-    for (const name of ["id", "uuid", "created", "updated"]) {
-      if (!declared.has(name)) omit.add(name);
-    }
-  }
-  return omit;
-};
-
-const buildInheritedSchema = (
-  view: ShapedView,
-  dsType: DatasourceType,
+const buildDtoSchema = (
+  fields: TypeField[],
+  write: boolean,
+  pkName?: string,
 ): RoutesApiSchema => {
-  const omit = omitForView(view, dsType);
-  const write =
-    view.name.startsWith("update_") ||
-    view.name.startsWith("create_") ||
-    isEagerName(view.name);
   const properties: Record<string, RoutesApiSchema> = {};
   const required: string[] = [];
-  for (const field of dsType.fields) {
-    if (omit.has(field.name)) continue;
-    properties[field.name] = datasourceFieldSchema(field);
-    if (write && fieldIsRequired(field)) {
+  for (const field of fields) {
+    properties[field.name] = fieldSchema(field, pkName);
+    if (write ? fieldIsRequired(field) : !field.isNullable) {
       required.push(field.name);
     }
-  }
-  for (const field of view.fields) {
-    properties[field.name] = viewFieldSchema(field);
-    if (write && !field.isNullable) required.push(field.name);
-  }
-  for (const enrichment of view.enrichments) {
-    const named: RoutesApiSchema = {
-      type: "string",
-      "x-references": `${enrichment.targetTable}.name`,
-    };
-    properties[enrichment.newField] = enrichment.isNullable
-      ? { ...named, nullable: true }
-      : named;
   }
   return write
     ? { type: "object", required, properties }
     : { type: "object", properties };
 };
 
-const buildDtoSchema = (fields: ViewField[]): RoutesApiSchema => {
-  const properties: Record<string, RoutesApiSchema> = {};
-  const required: string[] = [];
-  for (const field of fields) {
-    properties[field.name] = viewFieldSchema(field);
-    if (!field.isNullable) required.push(field.name);
-  }
-  return { type: "object", required, properties };
-};
+const unionMembers = (type: Type): string[] | undefined =>
+  type.kind === "union"
+    ? type.union
+    : type.kind === "one_of"
+      ? type.oneOf
+      : undefined;
 
 const buildComponents = (
-  views: ViewType[],
-  datasources: DatasourceType[],
+  types: Type[],
+  tables: DatasourceTable[],
 ): Record<string, RoutesApiSchema> => {
-  const dsByName = new Map(datasources.map((d) => [d.name, d] as const));
+  const tableByName = new Map(tables.map((d) => [d.name, d] as const));
   const components: Record<string, RoutesApiSchema> = {};
-  for (const view of views) {
-    if (view.kind === "union") {
-      components[view.name] = {
-        oneOf: view.members.map((member) => schemaRef(member)),
+  for (const type of types) {
+    const members = unionMembers(type);
+    if (members !== undefined) {
+      components[type.name] = {
+        oneOf: members.map((member) => schemaRef(member)),
       };
       continue;
     }
-    const parent = view.inherits !== null ? dsByName.get(view.inherits) : undefined;
-    components[view.name] =
-      parent === undefined
-        ? buildDtoSchema(view.fields)
-        : buildInheritedSchema(view, parent);
+    const pkName = primaryKeyColumn(tableByName.get(type.name), type);
+    const write =
+      type.name.startsWith("update_") ||
+      type.name.startsWith("create_") ||
+      isEagerName(type.name);
+    components[type.name] = buildDtoSchema(type.fields, write, pkName);
+    if (isDatasourceType(type) && !isManyToMany(type)) {
+      const updateName = `update_${type.name}`;
+      if (components[updateName] === undefined) {
+        components[updateName] = buildDtoSchema(type.fields, true, pkName);
+      }
+      if (pkName !== "id") {
+        const createName = `create_${type.name}`;
+        if (components[createName] === undefined) {
+          components[createName] = buildDtoSchema(type.fields, true, pkName);
+        }
+      }
+    }
   }
   return components;
 };
@@ -343,7 +341,7 @@ const entry = (
 };
 
 const occWrite = (
-  table: { datasourceType?: string | null; optimisticConcurrency?: boolean },
+  table: OccTable,
   settings: ISettings,
 ): { optimisticConcurrency: true } | Record<string, never> =>
   settings.usesOptimisticConcurrency(table)
@@ -353,7 +351,8 @@ const occWrite = (
 const crudEntries = (
   candidate: RouteCandidate,
   args: {
-    datasources: DatasourceType[];
+    types: Type[];
+    tables: DatasourceTable[];
     eager: Set<string>;
     components: Record<string, RoutesApiSchema>;
     settings: ISettings;
@@ -363,10 +362,11 @@ const crudEntries = (
 ): RoutesApiRouteEntry[] => {
   const entity = candidate.name;
   const collection = args.collectionPath ?? `/api/${specPlural(entity)}`;
-  const table = args.datasources.find((d) => d.name === entity);
-  const column = primaryKeyColumn(table);
+  const type = args.types.find((d) => d.name === entity);
+  const table = args.tables.find((d) => d.name === entity);
+  const column = primaryKeyColumn(table, type);
   const member = args.memberPath ?? `${collection}/{${column}}`;
-  const readonly = candidate.datasourceType === "readonly-lookup";
+  const readonly = isReadonlyLookup(type);
   const eager = args.eager.has(entity);
   const post = eager
     ? `${entity}_eager_create_body`
@@ -381,7 +381,7 @@ const crudEntries = (
     isCustom: false,
     primaryKeyField: column === "id" ? null : column,
   };
-  const occ = occWrite(candidate, args.settings);
+  const occ = occWrite(occTable(type, table), args.settings);
   const { components } = args;
   const routes = [
     entry(
@@ -535,15 +535,17 @@ const combinedPrefix = (nested: NestedRouteDescriptor): string =>
 const combinedEntries = (
   nested: NestedRouteDescriptor,
   components: Record<string, RoutesApiSchema>,
-  datasources: DatasourceType[],
+  types: Type[],
+  tables: DatasourceTable[],
   settings: ISettings,
 ): { routes: RoutesApiRouteEntry[]; extra: Record<string, RoutesApiSchema> } => {
   const { collection, member } = nestedPaths(nested);
   const prefix = combinedPrefix(nested);
   if (nested.kind === "direct-fk") {
     const child = nested.child.name;
-    const table = datasources.find((d) => d.name === child);
-    const occ = table === undefined ? {} : occWrite(table, settings);
+    const type = types.find((d) => d.name === child);
+    const table = tables.find((d) => d.name === child);
+    const occ = type === undefined ? {} : occWrite(occTable(type, table), settings);
     const meta = { entity: child, isCustom: false };
     return {
       extra: {},
@@ -563,7 +565,7 @@ const combinedEntries = (
       required: [nested.childFkField],
       properties: {
         [nested.childFkField]: {
-          ...idSchema(pkTypeOf(nested.target, datasources)),
+          ...idSchema(pkTypeOf(nested.target, types, tables)),
           "x-references": `${nested.target}.id`,
         },
       },
@@ -587,24 +589,25 @@ const parentCrudEntries = (
   parent: string,
   parentRoute: string,
   args: {
-    datasources: DatasourceType[];
+    types: Type[];
+    tables: DatasourceTable[];
     eager: Set<string>;
     components: Record<string, RoutesApiSchema>;
     settings: ISettings;
   },
 ): RoutesApiRouteEntry[] => {
-  const ds = args.datasources.find((d) => d.name === parent);
-  if (ds === undefined || ds.datasourceType === "many-to-many") return [];
+  const type = args.types.find((d) => d.name === parent);
+  if (type === undefined || isManyToMany(type) || !isDatasourceType(type)) {
+    return [];
+  }
   const memberPath = bracePath(parentRoute);
   const collectionPath = memberPath.replace(/\/\{[^}]+\}$/, "");
   if (collectionPath === memberPath) return [];
   return crudEntries(
     {
       name: parent,
-      kind: "datasource_type",
-      inheritsNamespace: "datasource_types",
-      datasourceType: ds.datasourceType,
-      target: ds.target ?? null,
+      tags: type.tags,
+      inherits: type.inherits,
       byFields: [],
     },
     { ...args, collectionPath, memberPath },
@@ -635,17 +638,19 @@ const combinedParentsWithRoute = (routesYaml: string): Map<string, string> => {
 
 const parseRoutesApi = (args: {
   parsed: ParsedRoutes;
-  views: ViewType[];
-  datasources: DatasourceType[];
+  types: Type[];
+  tables: DatasourceTable[];
   routesYaml: string;
   settings: ISettings;
 }): RoutesApiDoc => {
-  const components = buildComponents(args.views, args.datasources);
+  const components = buildComponents(args.types, args.tables);
   const eager = eagerRoots(args.routesYaml);
   const routedParents = combinedParentsWithRoute(args.routesYaml);
   const routes: RoutesApiRouteEntry[] = [];
+  const typeByName = new Map(args.types.map((t) => [t.name, t] as const));
   const crudArgs = {
-    datasources: args.datasources,
+    types: args.types,
+    tables: args.tables,
     eager,
     components,
     settings: args.settings,
@@ -657,11 +662,12 @@ const parseRoutesApi = (args: {
   }
 
   for (const candidate of args.parsed.candidates) {
-    if (candidate.kind !== "datasource_type") continue;
+    const type = typeByName.get(candidate.name);
+    if (!isDatasourceType(type) || isManyToMany(type)) continue;
     if (isEagerName(candidate.name)) continue;
     if (routedParents.has(candidate.name)) continue;
     routes.push(...crudEntries(candidate, crudArgs));
-    const readonly = candidate.datasourceType === "readonly-lookup";
+    const readonly = isReadonlyLookup(type);
     for (const field of candidate.byFields) {
       routes.push(...byFieldEntries(candidate.name, field, readonly, components));
     }
@@ -675,7 +681,8 @@ const parseRoutesApi = (args: {
     const { routes: items, extra } = combinedEntries(
       nested,
       components,
-      args.datasources,
+      args.types,
+      args.tables,
       args.settings,
     );
     Object.assign(components, extra);
@@ -695,8 +702,8 @@ export const loadRoutesApi = async (
   ]);
   return parseRoutesApi({
     parsed: spec.routes,
-    views: spec.viewTypes,
-    datasources: spec.expandedDatasourceTypes,
+    types: spec.expandedTypes,
+    tables: spec.datasource,
     routesYaml,
     settings: fromSettings(ctx.settings),
   });
