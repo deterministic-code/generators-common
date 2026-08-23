@@ -3,9 +3,6 @@ import { parse as parseYaml } from "yaml";
 import type { GenerateContext } from "./generate-context.ts";
 import {
   DeterministicParser,
-  ROUTES_YAML,
-  primaryKeyColumn,
-  typeHasTag,
   type CustomRouteEntry,
   type DatasourceTable,
   type NestedRouteDescriptor,
@@ -16,6 +13,7 @@ import {
   type TypeField,
 } from "@deterministic-code/deterministic-specifications-typescript/parser";
 import { fromSettings, type ISettings, type OccTable } from "./settings.ts";
+import { primaryKeyColumn, ROUTES_YAML, typeHasTag } from "./spec-types.ts";
 import {
   ROUTES_API_VERSION,
   type JsonValue,
