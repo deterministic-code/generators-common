@@ -318,6 +318,36 @@ types:
     assert.deepEqual(firstList, ["roleList", "userList", "addressList"]);
   });
 
+  it("maps primitive array field types onto OpenAPI arrays", async () => {
+    const doc = await loadRoutesApi({
+      reader: memoryReader({
+        "types.yaml": `types:
+  - user:
+      tags: [datasource_type, view_type]
+      inherits: set
+      fields:
+        - aliases:
+            type: string[]
+        - flags:
+            type: boolean[]
+`,
+        "routes.yaml": crudRoutes,
+      }),
+      settings: {},
+    });
+    const user = doc.components.user as {
+      properties?: Record<string, { type?: string; items?: { type?: string } }>;
+    };
+    assert.deepEqual(user.properties?.aliases, {
+      type: "array",
+      items: { type: "string" },
+    });
+    assert.deepEqual(user.properties?.flags, {
+      type: "array",
+      items: { type: "boolean" },
+    });
+  });
+
   it("builds components from types.yaml when datasource.yaml is omitted", async () => {
     const doc = await loadRoutesApi({
       reader: memoryReader({

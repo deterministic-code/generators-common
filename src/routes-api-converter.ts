@@ -143,7 +143,12 @@ const schemaForPrimitive = (
   if (type === "integer" || type === "smallinteger") {
     return { type: "integer", format: "int32" };
   }
-  if (type === "biginteger") return { type: "integer", format: "int64" };
+  if (type === "biginteger" || type === "unsignedbiginteger") {
+    return { type: "integer", format: "int64" };
+  }
+  if (type === "unsignedinteger" || type === "unsignedsmallinteger") {
+    return { type: "integer", format: "int32" };
+  }
   if (type === "float") return { type: "number", format: "float" };
   if (type === "boolean") return { type: "boolean" };
   if (type === "datetime") return { type: "string", format: "date-time" };
@@ -177,7 +182,7 @@ const fieldSchema = (
     field.name === "id" ||
     references?.split(".")[1] === "id"
   ) {
-    schema = idSchema(field.type);
+    schema = idSchema(field.base);
   } else if (field.kind === "type") {
     const ref = schemaRef(field.base);
     schema = field.isArray ? { type: "array", items: ref } : ref;
@@ -188,7 +193,7 @@ const fieldSchema = (
     schema = { type: "integer" };
   } else {
     const size = typeof field.size === "number" ? field.size : undefined;
-    const inner = schemaForPrimitive(field.type, size);
+    const inner = schemaForPrimitive(field.base, size);
     schema = field.isArray ? { type: "array", items: inner } : inner;
   }
   if (field.isNullable) schema = { ...schema, nullable: true };
