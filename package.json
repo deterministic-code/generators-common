@@ -10,59 +10,59 @@
   "exports": {
     "./package.json": "./package.json",
     "./base-type-converter": {
-      "types": "./dist/base-type-converter.d.ts",
+      "types": "./src/base-type-converter.ts",
       "import": "./dist/base-type-converter.js"
     },
     "./casing-strategy": {
-      "types": "./dist/casing-strategy.d.ts",
+      "types": "./src/casing-strategy.ts",
       "import": "./dist/casing-strategy.js"
     },
     "./datasource-type-tree": {
-      "types": "./dist/datasource-type-tree.d.ts",
+      "types": "./src/datasource-type-tree.ts",
       "import": "./dist/datasource-type-tree.js"
     },
     "./default-token": {
-      "types": "./dist/default-token.d.ts",
+      "types": "./src/default-token.ts",
       "import": "./dist/default-token.js"
     },
     "./deterministic-reader": {
-      "types": "./dist/deterministic-reader.d.ts",
+      "types": "./src/deterministic-reader.ts",
       "import": "./dist/deterministic-reader.js"
     },
     "./fill": {
-      "types": "./dist/fill.d.ts",
+      "types": "./src/fill.ts",
       "import": "./dist/fill.js"
     },
     "./generate-context": {
-      "types": "./dist/generate-context.d.ts",
+      "types": "./src/generate-context.ts",
       "import": "./dist/generate-context.js"
     },
     "./generate-entry": {
-      "types": "./dist/generate-entry.d.ts",
+      "types": "./src/generate-entry.ts",
       "import": "./dist/generate-entry.js"
     },
     "./import-generator": {
-      "types": "./dist/import-generator.d.ts",
+      "types": "./src/import-generator.ts",
       "import": "./dist/import-generator.js"
     },
     "./reference-verifier": {
-      "types": "./dist/reference-verifier.d.ts",
+      "types": "./src/reference-verifier.ts",
       "import": "./dist/reference-verifier.js"
     },
     "./routes-api": {
-      "types": "./dist/routes-api.d.ts",
+      "types": "./src/routes-api.ts",
       "import": "./dist/routes-api.js"
     },
     "./routes-api-converter": {
-      "types": "./dist/routes-api-converter.d.ts",
+      "types": "./src/routes-api-converter.ts",
       "import": "./dist/routes-api-converter.js"
     },
     "./settings": {
-      "types": "./dist/settings.d.ts",
+      "types": "./src/settings.ts",
       "import": "./dist/settings.js"
     },
     "./spec-types": {
-      "types": "./dist/spec-types.d.ts",
+      "types": "./src/spec-types.ts",
       "import": "./dist/spec-types.js"
     }
   },
