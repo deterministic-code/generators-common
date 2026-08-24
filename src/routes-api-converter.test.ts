@@ -199,7 +199,7 @@ combined_routes:
 routes: []
 `,
       }),
-      settings: { "datasource.id_type": "uuid" },
+      settings: {},
     });
     assert.equal(
       routeOf(doc.routes, "organizationTagsList").path,
