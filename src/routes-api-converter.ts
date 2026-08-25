@@ -225,12 +225,7 @@ const buildDtoSchema = (
     : { type: "object", properties };
 };
 
-const unionMembers = (type: Type): string[] | undefined =>
-  type.kind === "union"
-    ? type.union
-    : type.kind === "one_of"
-      ? type.oneOf
-      : undefined;
+const unionMembers = (_type: Type): string[] | undefined => undefined;
 
 const buildComponents = (
   types: Type[],

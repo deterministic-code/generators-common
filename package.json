@@ -78,7 +78,7 @@
     "test": "node --experimental-strip-types --test src/routes-api-converter.test.ts src/casing-strategy.test.ts src/settings.test.ts src/reference-verifier.test.ts src/datasource-type-tree.test.ts"
   },
   "dependencies": {
-    "@deterministic-code/deterministic-specifications-typescript": "github:deterministic-code/deterministic-specifications-typescript#slim-public-api",
+    "@deterministic-code/deterministic-specifications-typescript": "github:deterministic-code/deterministic-specifications-typescript#main",
     "@types/mustache": "^4.2.6",
     "@types/pluralize": "^0.0.33",
     "mustache": "^4.2.0",
