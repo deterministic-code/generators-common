@@ -89,9 +89,5 @@ export const tableByName = (
 ): Map<string, DatasourceTable> =>
   new Map(spec.datasource.map((table) => [table.name, table]));
 
-export const unionMembers = (type: Type): string[] | undefined =>
-  type.kind === "union"
-    ? type.union
-    : type.kind === "one_of"
-      ? type.oneOf
-      : undefined;
+/** TypeScript / OpenAPI exclusive unions (`one_of`) are no longer a type form. */
+export const unionMembers = (_type: Type): string[] | undefined => undefined;

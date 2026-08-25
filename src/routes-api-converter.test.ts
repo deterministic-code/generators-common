@@ -182,9 +182,7 @@ combined_routes:
             references: tag.id
   - search_result:
       tags: [view_type]
-      one_of:
-        - organization
-        - tag
+      inherits: organization
 `,
         "datasource.yaml": datasourceInclude,
         "routes.yaml": `includes:
@@ -210,7 +208,7 @@ routes: []
       "/api/organizations/{id}/tags/{tag}",
     );
     assert.ok(doc.components.link_org_tag);
-    assert.ok(doc.components.search_result?.oneOf);
+    assert.ok(doc.components.search_result);
   });
 
   it("stamps optimisticConcurrency on member writes when OCC is on", async () => {
