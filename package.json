@@ -7,6 +7,12 @@
     "url": "git+https://github.com/deterministic-code/generators-common.git"
   },
   "type": "module",
+  "imports": {
+    "#mustache": {
+      "types": "./src/mustache-module.d.ts",
+      "default": "mustache"
+    }
+  },
   "exports": {
     "./package.json": "./package.json",
     "./base-type-converter": {
@@ -76,11 +82,11 @@
     "prepare": "npm run build",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "typecheck:exports": "tsc -p tsconfig.exports.json --noEmit",
-    "test": "node --experimental-strip-types --test src/routes-api-converter.test.ts src/casing-strategy.test.ts src/settings.test.ts src/reference-verifier.test.ts src/datasource-type-tree.test.ts && tsc -p tsconfig.exports.json --noEmit"
+    "typecheck:src-consumer": "tsc -p tsconfig.src-consumer.json --noEmit",
+    "test": "node --experimental-strip-types --test src/routes-api-converter.test.ts src/casing-strategy.test.ts src/settings.test.ts src/reference-verifier.test.ts src/datasource-type-tree.test.ts && tsc -p tsconfig.exports.json --noEmit && tsc -p tsconfig.src-consumer.json --noEmit"
   },
   "dependencies": {
     "@deterministic-code/deterministic-specifications-typescript": "github:deterministic-code/deterministic-specifications-typescript#main",
-    "@types/mustache": "^4.2.6",
     "@types/pluralize": "^0.0.33",
     "mustache": "^4.2.0",
     "pluralize": "^8.0.0",
