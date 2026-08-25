@@ -10,59 +10,59 @@
   "exports": {
     "./package.json": "./package.json",
     "./base-type-converter": {
-      "types": "./src/base-type-converter.ts",
+      "types": "./dist/base-type-converter.d.ts",
       "import": "./dist/base-type-converter.js"
     },
     "./casing-strategy": {
-      "types": "./src/casing-strategy.ts",
+      "types": "./dist/casing-strategy.d.ts",
       "import": "./dist/casing-strategy.js"
     },
     "./datasource-type-tree": {
-      "types": "./src/datasource-type-tree.ts",
+      "types": "./dist/datasource-type-tree.d.ts",
       "import": "./dist/datasource-type-tree.js"
     },
     "./default-token": {
-      "types": "./src/default-token.ts",
+      "types": "./dist/default-token.d.ts",
       "import": "./dist/default-token.js"
     },
     "./deterministic-reader": {
-      "types": "./src/deterministic-reader.ts",
+      "types": "./dist/deterministic-reader.d.ts",
       "import": "./dist/deterministic-reader.js"
     },
     "./fill": {
-      "types": "./src/fill.ts",
+      "types": "./dist/fill.d.ts",
       "import": "./dist/fill.js"
     },
     "./generate-context": {
-      "types": "./src/generate-context.ts",
+      "types": "./dist/generate-context.d.ts",
       "import": "./dist/generate-context.js"
     },
     "./generate-entry": {
-      "types": "./src/generate-entry.ts",
+      "types": "./dist/generate-entry.d.ts",
       "import": "./dist/generate-entry.js"
     },
     "./import-generator": {
-      "types": "./src/import-generator.ts",
+      "types": "./dist/import-generator.d.ts",
       "import": "./dist/import-generator.js"
     },
     "./reference-verifier": {
-      "types": "./src/reference-verifier.ts",
+      "types": "./dist/reference-verifier.d.ts",
       "import": "./dist/reference-verifier.js"
     },
     "./routes-api": {
-      "types": "./src/routes-api.ts",
+      "types": "./dist/routes-api.d.ts",
       "import": "./dist/routes-api.js"
     },
     "./routes-api-converter": {
-      "types": "./src/routes-api-converter.ts",
+      "types": "./dist/routes-api-converter.d.ts",
       "import": "./dist/routes-api-converter.js"
     },
     "./settings": {
-      "types": "./src/settings.ts",
+      "types": "./dist/settings.d.ts",
       "import": "./dist/settings.js"
     },
     "./spec-types": {
-      "types": "./src/spec-types.ts",
+      "types": "./dist/spec-types.d.ts",
       "import": "./dist/spec-types.js"
     }
   },
@@ -75,7 +75,8 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "prepare": "npm run build",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
-    "test": "node --experimental-strip-types --test src/routes-api-converter.test.ts src/casing-strategy.test.ts src/settings.test.ts src/reference-verifier.test.ts src/datasource-type-tree.test.ts"
+    "typecheck:exports": "tsc -p tsconfig.exports.json --noEmit",
+    "test": "node --experimental-strip-types --test src/routes-api-converter.test.ts src/casing-strategy.test.ts src/settings.test.ts src/reference-verifier.test.ts src/datasource-type-tree.test.ts && tsc -p tsconfig.exports.json --noEmit"
   },
   "dependencies": {
     "@deterministic-code/deterministic-specifications-typescript": "github:deterministic-code/deterministic-specifications-typescript#main",
