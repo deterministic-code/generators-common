@@ -14,7 +14,12 @@ import {
   type TypeField,
 } from "@deterministic-code/deterministic-specifications-typescript/parser";
 import { fromSettings, type ISettings, type OccTable } from "./settings.ts";
-import { primaryKeyColumn, ROUTES_YAML, typeHasTag } from "./spec-types.ts";
+import {
+  identityColumns,
+  primaryKeyColumn,
+  ROUTES_YAML,
+  typeHasTag,
+} from "./spec-types.ts";
 import {
   ROUTES_API_VERSION,
   type JsonValue,
@@ -173,12 +178,12 @@ const converterTypeForSchema = (schema: RoutesApiSchema): string => {
 
 const fieldSchema = (
   field: TypeField,
-  pkName: string | undefined,
+  pkNames: readonly string[],
 ): RoutesApiSchema => {
   const references = refString(field.references);
   let schema: RoutesApiSchema;
   if (
-    field.name === pkName ||
+    pkNames.includes(field.name) ||
     field.name === "id" ||
     references?.split(".")[1] === "id"
   ) {
@@ -210,12 +215,12 @@ const fieldIsRequired = (field: TypeField): boolean =>
 const buildDtoSchema = (
   fields: TypeField[],
   write: boolean,
-  pkName?: string,
+  pkNames: readonly string[] = [],
 ): RoutesApiSchema => {
   const properties: Record<string, RoutesApiSchema> = {};
   const required: string[] = [];
   for (const field of fields) {
-    properties[field.name] = fieldSchema(field, pkName);
+    properties[field.name] = fieldSchema(field, pkNames);
     if (write ? fieldIsRequired(field) : !field.isNullable) {
       required.push(field.name);
     }
@@ -225,8 +230,6 @@ const buildDtoSchema = (
     : { type: "object", properties };
 };
 
-const unionMembers = (_type: Type): string[] | undefined => undefined;
-
 const buildComponents = (
   types: Type[],
   tables: DatasourceTable[],
@@ -234,28 +237,21 @@ const buildComponents = (
   const tableByName = new Map(tables.map((d) => [d.name, d] as const));
   const components: Record<string, RoutesApiSchema> = {};
   for (const type of types) {
-    const members = unionMembers(type);
-    if (members !== undefined) {
-      components[type.name] = {
-        oneOf: members.map((member) => schemaRef(member)),
-      };
-      continue;
-    }
-    const pkName = primaryKeyColumn(tableByName.get(type.name), type);
+    const pkNames = identityColumns(type, tableByName.get(type.name));
     const write =
       type.name.startsWith("update_") ||
       type.name.startsWith("create_") ||
       isEagerName(type.name);
-    components[type.name] = buildDtoSchema(type.fields, write, pkName);
+    components[type.name] = buildDtoSchema(type.fields, write, pkNames);
     if (isDatasourceType(type) && !isManyToMany(type)) {
       const updateName = `update_${type.name}`;
       if (components[updateName] === undefined) {
-        components[updateName] = buildDtoSchema(type.fields, true, pkName);
+        components[updateName] = buildDtoSchema(type.fields, true, pkNames);
       }
-      if (pkName !== "id") {
+      if (pkNames.length !== 1 || pkNames[0] !== "id") {
         const createName = `create_${type.name}`;
         if (components[createName] === undefined) {
-          components[createName] = buildDtoSchema(type.fields, true, pkName);
+          components[createName] = buildDtoSchema(type.fields, true, pkNames);
         }
       }
     }
@@ -335,6 +331,7 @@ const entry = (
   if (def.byField !== undefined) out.byField = def.byField;
   if (def.byFieldUnique !== undefined) out.byFieldUnique = def.byFieldUnique;
   if (def.primaryKeyField !== undefined) out.primaryKeyField = def.primaryKeyField;
+  if (def.primaryKeyFields !== undefined) out.primaryKeyFields = def.primaryKeyFields;
   if (def.optimisticConcurrency === true) out.optimisticConcurrency = true;
   return { [name]: out };
 };
@@ -363,13 +360,16 @@ const crudEntries = (
   const collection = args.collectionPath ?? `/api/${specPlural(entity)}`;
   const type = args.types.find((d) => d.name === entity);
   const table = args.tables.find((d) => d.name === entity);
-  const column = primaryKeyColumn(table, type);
-  const member = args.memberPath ?? `${collection}/{${column}}`;
+  const columns = identityColumns(type, table);
+  const column = columns[0] ?? "id";
+  const member =
+    args.memberPath ??
+    `${collection}/${(columns.length > 0 ? columns : [column]).map((c) => `{${c}}`).join("/")}`;
   const readonly = isReadonlyLookup(type);
   const eager = args.eager.has(entity);
   const post = eager
     ? `${entity}_eager_create_body`
-    : column !== "id"
+    : columns.length !== 1 || column !== "id"
       ? `create_${entity}`
       : `update_${entity}`;
   const put = eager ? `${entity}_eager_body` : `update_${entity}`;
@@ -378,7 +378,8 @@ const crudEntries = (
   const meta = {
     entity,
     isCustom: false,
-    primaryKeyField: column === "id" ? null : column,
+    primaryKeyField: columns.length === 1 && column === "id" ? null : column,
+    ...(columns.length > 1 ? { primaryKeyFields: columns } : {}),
   };
   const occ = occWrite(occTable(type, table), args.settings);
   const { components } = args;
@@ -515,16 +516,27 @@ const customEntry = (
   );
 };
 
+const nestedMemberSuffix = (
+  nested: NestedRouteDescriptor,
+  types: Type[],
+  tables: DatasourceTable[],
+): string => {
+  if (nested.kind === "m2m") return `{${nested.targetParam}}`;
+  const type = types.find((d) => d.name === nested.child.name);
+  const table = tables.find((d) => d.name === nested.child.name);
+  const cols = identityColumns(type, table);
+  return (cols.length > 0 ? cols : ["id"]).map((c) => `{${c}}`).join("/");
+};
+
 const nestedPaths = (
   nested: NestedRouteDescriptor,
+  types: Type[],
+  tables: DatasourceTable[],
 ): { collection: string; member: string } => {
   const collection = bracePath(`${nested.parentBasePath}${nested.segment}`);
   return {
     collection,
-    member:
-      nested.kind === "m2m"
-        ? `${collection}/{${nested.targetParam}}`
-        : `${collection}/{id}`,
+    member: `${collection}/${nestedMemberSuffix(nested, types, tables)}`,
   };
 };
 
@@ -538,7 +550,7 @@ const combinedEntries = (
   tables: DatasourceTable[],
   settings: ISettings,
 ): { routes: RoutesApiRouteEntry[]; extra: Record<string, RoutesApiSchema> } => {
-  const { collection, member } = nestedPaths(nested);
+  const { collection, member } = nestedPaths(nested, types, tables);
   const prefix = combinedPrefix(nested);
   if (nested.kind === "direct-fk") {
     const child = nested.child.name;
@@ -600,7 +612,7 @@ const parentCrudEntries = (
     return [];
   }
   const memberPath = bracePath(parentRoute);
-  const collectionPath = memberPath.replace(/\/\{[^}]+\}$/, "");
+  const collectionPath = memberPath.replace(/(\/\{[^}]+\})+$/, "");
   if (collectionPath === memberPath) return [];
   return crudEntries(
     {

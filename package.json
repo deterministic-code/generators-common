@@ -83,7 +83,7 @@
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "typecheck:exports": "tsc -p tsconfig.exports.json --noEmit",
     "typecheck:src-consumer": "tsc -p tsconfig.src-consumer.json --noEmit",
-    "test": "node --experimental-strip-types --test src/routes-api-converter.test.ts src/casing-strategy.test.ts src/settings.test.ts src/reference-verifier.test.ts src/datasource-type-tree.test.ts && tsc -p tsconfig.exports.json --noEmit && tsc -p tsconfig.src-consumer.json --noEmit"
+    "test": "node --experimental-strip-types --test src/routes-api-converter.test.ts src/spec-types.test.ts src/casing-strategy.test.ts src/settings.test.ts src/reference-verifier.test.ts src/datasource-type-tree.test.ts && tsc -p tsconfig.exports.json --noEmit && tsc -p tsconfig.src-consumer.json --noEmit"
   },
   "dependencies": {
     "@deterministic-code/deterministic-specifications-typescript": "github:deterministic-code/deterministic-specifications-typescript#main",
