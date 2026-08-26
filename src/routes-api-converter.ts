@@ -84,14 +84,16 @@ const pkTypeOf = (
   return type?.fields.find((f) => f.name === col)?.type ?? "integer";
 };
 
+const tagged = (type: Type | undefined, tag: string): type is Type =>
+  type !== undefined && typeHasTag(type, tag);
+
 const isReadonlyLookup = (type: Type | undefined): boolean =>
-  type !== undefined && typeHasTag(type, "readonly_lookup");
+  tagged(type, "readonly_lookup");
 
-const isManyToMany = (type: Type | undefined): boolean =>
-  type !== undefined && typeHasTag(type, "many_to_many");
-
-const isDatasourceType = (type: Type | undefined): boolean =>
-  type !== undefined && typeHasTag(type, "datasource_type");
+/** CRUD/client surface follows routes.yaml candidates (view and/or table), not table-only tags. */
+const isRoutedEntity = (type: Type | undefined): type is Type =>
+  (tagged(type, "datasource_type") || tagged(type, "view_type")) &&
+  !tagged(type, "many_to_many");
 
 const occTable = (
   type: Type | undefined,
@@ -127,11 +129,21 @@ const schemaRef = (name: string): { $ref: string } => ({
   $ref: `${REF_PREFIX}${name}`,
 });
 
-const idSchema = (idType: string): RoutesApiSchema => {
-  if (idType === "uuid") return { type: "string", format: "uuid" };
-  if (idType === "biginteger") return { type: "integer", format: "int64" };
-  if (idType === "string") return { type: "string", maxLength: 64 };
-  return { type: "integer" };
+const PRIMITIVE_SCHEMA: Record<string, RoutesApiSchema> = {
+  decimal: { type: "string" },
+  number: { type: "number" },
+  integer: { type: "integer", format: "int32" },
+  smallinteger: { type: "integer", format: "int32" },
+  unsignedinteger: { type: "integer", format: "int32" },
+  unsignedsmallinteger: { type: "integer", format: "int32" },
+  biginteger: { type: "integer", format: "int64" },
+  unsignedbiginteger: { type: "integer", format: "int64" },
+  float: { type: "number", format: "float" },
+  boolean: { type: "boolean" },
+  datetime: { type: "string", format: "date-time" },
+  binary: { type: "string", format: "byte" },
+  uuid: { type: "string", format: "uuid" },
+  reference: { type: "integer" },
 };
 
 const schemaForPrimitive = (
@@ -143,24 +155,11 @@ const schemaForPrimitive = (
       ? { type: "string" }
       : { type: "string", maxLength: size };
   }
-  if (type === "decimal") return { type: "string" };
-  if (type === "number") return { type: "number" };
-  if (type === "integer" || type === "smallinteger") {
-    return { type: "integer", format: "int32" };
+  const schema = PRIMITIVE_SCHEMA[type];
+  if (schema === undefined) {
+    throw new Error(`Unknown datasource field type: ${type}`);
   }
-  if (type === "biginteger" || type === "unsignedbiginteger") {
-    return { type: "integer", format: "int64" };
-  }
-  if (type === "unsignedinteger" || type === "unsignedsmallinteger") {
-    return { type: "integer", format: "int32" };
-  }
-  if (type === "float") return { type: "number", format: "float" };
-  if (type === "boolean") return { type: "boolean" };
-  if (type === "datetime") return { type: "string", format: "date-time" };
-  if (type === "binary") return { type: "string", format: "byte" };
-  if (type === "uuid") return { type: "string", format: "uuid" };
-  if (type === "reference") return { type: "integer" };
-  throw new Error(`Unknown datasource field type: ${type}`);
+  return schema;
 };
 
 const converterTypeForSchema = (schema: RoutesApiSchema): string => {
@@ -176,19 +175,10 @@ const converterTypeForSchema = (schema: RoutesApiSchema): string => {
   return "string";
 };
 
-const fieldSchema = (
-  field: TypeField,
-  pkNames: readonly string[],
-): RoutesApiSchema => {
+const fieldSchema = (field: TypeField): RoutesApiSchema => {
   const references = refString(field.references);
   let schema: RoutesApiSchema;
-  if (
-    pkNames.includes(field.name) ||
-    field.name === "id" ||
-    references?.split(".")[1] === "id"
-  ) {
-    schema = idSchema(field.base);
-  } else if (field.kind === "type") {
+  if (field.kind === "type") {
     const ref = schemaRef(field.base);
     schema = field.isArray ? { type: "array", items: ref } : ref;
   } else if (
@@ -215,12 +205,11 @@ const fieldIsRequired = (field: TypeField): boolean =>
 const buildDtoSchema = (
   fields: TypeField[],
   write: boolean,
-  pkNames: readonly string[] = [],
 ): RoutesApiSchema => {
   const properties: Record<string, RoutesApiSchema> = {};
   const required: string[] = [];
   for (const field of fields) {
-    properties[field.name] = fieldSchema(field, pkNames);
+    properties[field.name] = fieldSchema(field);
     if (write ? fieldIsRequired(field) : !field.isNullable) {
       required.push(field.name);
     }
@@ -242,16 +231,16 @@ const buildComponents = (
       type.name.startsWith("update_") ||
       type.name.startsWith("create_") ||
       isEagerName(type.name);
-    components[type.name] = buildDtoSchema(type.fields, write, pkNames);
-    if (isDatasourceType(type) && !isManyToMany(type)) {
+    components[type.name] = buildDtoSchema(type.fields, write);
+    if (isRoutedEntity(type)) {
       const updateName = `update_${type.name}`;
       if (components[updateName] === undefined) {
-        components[updateName] = buildDtoSchema(type.fields, true, pkNames);
+        components[updateName] = buildDtoSchema(type.fields, true);
       }
       if (pkNames.length !== 1 || pkNames[0] !== "id") {
         const createName = `create_${type.name}`;
         if (components[createName] === undefined) {
-          components[createName] = buildDtoSchema(type.fields, true, pkNames);
+          components[createName] = buildDtoSchema(type.fields, true);
         }
       }
     }
@@ -459,19 +448,28 @@ const byFieldEntries = (
     isCustom: false,
     byField: field.byField,
     byFieldUnique: field.byFieldUnique,
-    response: entity,
   };
   const out: RoutesApiRouteEntry[] = [];
   if (methods.includes("GET")) {
     out.push(
-      entry(`${camel}GetBy${byPascal}`, { path: member, method: "GET", ...meta }, components),
+      entry(
+        `${camel}GetBy${byPascal}`,
+        { path: member, method: "GET", response: entity, ...meta },
+        components,
+      ),
     );
   }
   if (methods.includes("PUT")) {
     out.push(
       entry(
         `${camel}UpdateBy${byPascal}`,
-        { path: member, method: "PUT", request: `update_${entity}`, ...meta },
+        {
+          path: member,
+          method: "PUT",
+          request: `update_${entity}`,
+          response: entity,
+          ...meta,
+        },
         components,
       ),
     );
@@ -480,14 +478,7 @@ const byFieldEntries = (
     out.push(
       entry(
         `${camel}DeleteBy${byPascal}`,
-        {
-          path: member,
-          method: "DELETE",
-          entity,
-          isCustom: false,
-          byField: field.byField,
-          byFieldUnique: field.byFieldUnique,
-        },
+        { path: member, method: "DELETE", ...meta },
         components,
       ),
     );
@@ -576,7 +567,7 @@ const combinedEntries = (
       required: [nested.childFkField],
       properties: {
         [nested.childFkField]: {
-          ...idSchema(pkTypeOf(nested.target, types, tables)),
+          ...schemaForPrimitive(pkTypeOf(nested.target, types, tables)),
           "x-references": `${nested.target}.id`,
         },
       },
@@ -608,7 +599,7 @@ const parentCrudEntries = (
   },
 ): RoutesApiRouteEntry[] => {
   const type = args.types.find((d) => d.name === parent);
-  if (type === undefined || isManyToMany(type) || !isDatasourceType(type)) {
+  if (!isRoutedEntity(type)) {
     return [];
   }
   const memberPath = bracePath(parentRoute);
@@ -625,9 +616,9 @@ const parentCrudEntries = (
   );
 };
 
-const eagerRoots = (routesYaml: string): Set<string> => {
+const eagerRoots = (includes: unknown): Set<string> => {
   const out = new Set<string>();
-  for (const [, block] of namedEntries(rec(parseYaml(routesYaml)).includes)) {
+  for (const [, block] of namedEntries(includes)) {
     const paths = rec(block).eager_write_path;
     if (!Array.isArray(paths)) continue;
     for (const path of paths) {
@@ -638,9 +629,9 @@ const eagerRoots = (routesYaml: string): Set<string> => {
   return out;
 };
 
-const combinedParentsWithRoute = (routesYaml: string): Map<string, string> => {
+const combinedParentsWithRoute = (combined: unknown): Map<string, string> => {
   const out = new Map<string, string>();
-  for (const [name, body] of namedEntries(rec(parseYaml(routesYaml)).combined_routes)) {
+  for (const [name, body] of namedEntries(combined)) {
     const route = rec(body).route;
     if (typeof route === "string") out.set(name, route);
   }
@@ -655,8 +646,9 @@ const parseRoutesApi = (args: {
   settings: ISettings;
 }): RoutesApiDoc => {
   const components = buildComponents(args.types, args.tables);
-  const eager = eagerRoots(args.routesYaml);
-  const routedParents = combinedParentsWithRoute(args.routesYaml);
+  const routesDoc = rec(parseYaml(args.routesYaml));
+  const eager = eagerRoots(routesDoc.includes);
+  const routedParents = combinedParentsWithRoute(routesDoc.combined_routes);
   const routes: RoutesApiRouteEntry[] = [];
   const typeByName = new Map(args.types.map((t) => [t.name, t] as const));
   const crudArgs = {
@@ -674,7 +666,7 @@ const parseRoutesApi = (args: {
 
   for (const candidate of args.parsed.candidates) {
     const type = typeByName.get(candidate.name);
-    if (!isDatasourceType(type) || isManyToMany(type)) continue;
+    if (!isRoutedEntity(type)) continue;
     if (isEagerName(candidate.name)) continue;
     if (routedParents.has(candidate.name)) continue;
     routes.push(...crudEntries(candidate, crudArgs));
