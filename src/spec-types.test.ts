@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { DatasourceTable, Type, TypeField } from "@deterministic-code/deterministic-specifications-typescript/parser";
 import {
+  columnFields,
   identityColumns,
+  isCollectionField,
   isPkField,
   primaryKeyColumn,
   uniqueLookupFields,
@@ -82,6 +84,24 @@ describe("identityColumns", () => {
     assert.deepEqual(
       uniqueLookupFields(type).map((e) => e.field),
       ["left_id", "right_id"],
+    );
+  });
+});
+
+describe("columnFields", () => {
+  it("drops type-kind arrays and keeps scalars", () => {
+    const addresses = field("addresses", {
+      type: "address[]",
+      kind: "type",
+      base: "address",
+      isArray: true,
+    });
+    const email = field("email", { type: "string" });
+    assert.equal(isCollectionField(addresses), true);
+    assert.equal(isCollectionField(email), false);
+    assert.deepEqual(
+      columnFields([email, addresses]).map((f) => f.name),
+      ["email"],
     );
   });
 });
