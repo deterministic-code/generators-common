@@ -32,6 +32,13 @@ export const isManyToMany = (type: Type): boolean =>
 export const isReadonlyLookup = (type: Type): boolean =>
   typeHasTag(type, "readonly_lookup");
 
+/** Nested eager collections (`address[]`) are view relations, not persisted columns. */
+export const isCollectionField = (field: TypeField): boolean =>
+  field.isArray && field.kind === "type";
+
+export const columnFields = (fields: readonly TypeField[]): TypeField[] =>
+  fields.filter((field) => !isCollectionField(field));
+
 export const tableKind = (type: Type): string => {
   if (isManyToMany(type)) return "many-to-many";
   if (isReadonlyLookup(type)) return "readonly-lookup";
@@ -79,6 +86,7 @@ export const uniqueLookupFields = (
   const add = (name: string) => {
     if (out.some((e) => e.field === name)) return;
     const f = type.fields.find((x) => x.name === name);
+    if (f !== undefined && isCollectionField(f)) return;
     out.push({
       field: name,
       type: typeof f?.type === "string" ? f.type : "string",
