@@ -211,6 +211,65 @@ routes: []
     assert.ok(doc.components.search_result);
   });
 
+  it("emits parent CRUD for a view-only combined parent (contact_group pattern)", async () => {
+    const doc = await loadRoutesApi({
+      reader: memoryReader({
+        "types.yaml": `types:
+  - groups_base:
+      tags: [datasource_type]
+      inherits: set
+      fields:
+        - name:
+            type: string
+  - contact_group:
+      tags: [view_type]
+      inherits: groups_base
+      fields:
+        - members:
+            type: contact[]
+            references: group_member.contact_group_id
+  - contact:
+      tags: [datasource_type, view_type]
+      inherits: set
+      fields:
+        - name:
+            type: string
+  - group_member:
+      tags: [datasource_type, many_to_many]
+      fields:
+        - contact_group_id:
+            type: number
+            references: groups_base.id
+        - contact_id:
+            type: number
+            references: contact.id
+`,
+        "datasource.yaml": datasourceInclude,
+        "routes.yaml": `includes:
+  - types:
+      filter: tag == "view_type"
+combined_routes:
+  - contact_group:
+      route: /api/contact-groups/{id}
+      combines:
+        - contact:
+            via: group_member
+            target: contact
+            route: /members
+`,
+      }),
+      settings: {},
+    });
+    assert.equal(routeOf(doc.routes, "contactGroupList").path, "/api/contact-groups");
+    assert.equal(routeOf(doc.routes, "contactGroupGet").path, "/api/contact-groups/{id}");
+    assert.equal(routeOf(doc.routes, "contactGroupCreate").path, "/api/contact-groups");
+    assert.equal(
+      routeOf(doc.routes, "contactGroupMembersList").path,
+      "/api/contact-groups/{id}/members",
+    );
+    assert.ok(doc.components.update_contact_group);
+  });
+
   it("stamps optimisticConcurrency on member writes when OCC is on", async () => {
     const files = {
       "types.yaml": `types:
