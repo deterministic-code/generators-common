@@ -43,6 +43,8 @@ export type RoutesApiRouteDef = {
   byField?: string;
   byFieldUnique?: boolean;
   primaryKeyField?: string | null;
+  /** All identity columns when the entity has a composite primary key. */
+  primaryKeyFields?: string[];
   /** When true, this write requires `If-Match: <updated>` (PUT/PATCH/DELETE). */
   optimisticConcurrency?: boolean;
 };

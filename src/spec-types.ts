@@ -7,7 +7,6 @@ import type {
 } from "@deterministic-code/deterministic-specifications-typescript/parser";
 
 export const TYPES_YAML = "types.yaml";
-export const DATASOURCE_YAML = "datasource.yaml";
 export const DATASOURCE_SEEDS_YAML = "datasource_seeds.yaml";
 export const SERVICES_YAML = "services.yaml";
 export const ROUTES_YAML = "routes.yaml";
@@ -39,17 +38,29 @@ export const tableKind = (type: Type): string => {
   return "standard";
 };
 
-type TypeKey = Pick<Type, "inherits" | "fields">;
+type TypeKey = Pick<Type, "inherits" | "fields" | "ids">;
+
+const markedIds = (type: TypeKey): string[] =>
+  type.fields.filter((f) => f.isId === true).map((f) => f.name);
+
+/** Ordered identity columns: `ids`, else `is_id`, else `is_fixed_id`, else injected `id`. */
+export const identityColumns = (
+  type?: TypeKey,
+  table?: DatasourceTable,
+): string[] => {
+  if (type?.ids !== undefined && type.ids.length > 0) return [...type.ids];
+  const marked = type !== undefined ? markedIds(type) : [];
+  if (marked.length > 0) return marked;
+  const fixed = table?.fields.find((f) => f.isFixedId);
+  if (fixed) return [fixed.name];
+  if (type?.inherits === "set" || type === undefined) return ["id"];
+  return [];
+};
 
 export const primaryKeyColumn = (
   table: DatasourceTable | undefined,
-  type?: Pick<Type, "inherits">,
-): string => {
-  const fixed = table?.fields.find((f) => f.isFixedId);
-  if (fixed) return fixed.name;
-  if (type?.inherits === "set") return "id";
-  return "id";
-};
+  type?: TypeKey,
+): string => identityColumns(type, table)[0] ?? "id";
 
 export const pkName = (type: TypeKey, table?: DatasourceTable): string =>
   primaryKeyColumn(table, type);
@@ -58,7 +69,7 @@ export const isPkField = (
   field: TypeField,
   type: TypeKey,
   table?: DatasourceTable,
-): boolean => field.name === primaryKeyColumn(table, type);
+): boolean => identityColumns(type, table).includes(field.name);
 
 export const uniqueLookupFields = (
   type: TypeKey,
@@ -74,9 +85,7 @@ export const uniqueLookupFields = (
       ...(typeof f?.size === "number" ? { size: f.size } : {}),
     });
   };
-  if (type.inherits === "set" || table?.fields.some((f) => f.isFixedId)) {
-    add(primaryKeyColumn(table, type));
-  }
+  for (const name of identityColumns(type, table)) add(name);
   for (const overlay of table?.fields ?? []) {
     if (overlay.isUnique) add(overlay.name);
   }
@@ -88,6 +97,3 @@ export const tableByName = (
   spec: IDeterministic,
 ): Map<string, DatasourceTable> =>
   new Map(spec.datasource.map((table) => [table.name, table]));
-
-/** TypeScript / OpenAPI exclusive unions (`one_of`) are no longer a type form. */
-export const unionMembers = (_type: Type): string[] | undefined => undefined;

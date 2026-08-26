@@ -346,6 +346,32 @@ types:
     });
   });
 
+  it("stacks composite identity columns on the member path", async () => {
+    const doc = await loadRoutesApi({
+      reader: memoryReader({
+        "types.yaml": `types:
+  - link:
+      tags: [datasource_type, view_type]
+      inherits: set
+      ids: [left_id, right_id]
+      fields:
+        - left_id:
+            type: integer
+        - right_id:
+            type: integer
+`,
+        "datasource.yaml": datasourceInclude,
+        "routes.yaml": crudRoutes,
+      }),
+      settings: {},
+    });
+    const get = routeOf(doc.routes, "linkGet");
+    assert.equal(get.path, "/api/links/{left_id}/{right_id}");
+    assert.equal(get.primaryKeyField, "left_id");
+    assert.deepEqual(get.primaryKeyFields, ["left_id", "right_id"]);
+    assert.ok(doc.components.create_link);
+  });
+
   it("builds components from types.yaml when datasource.yaml is omitted", async () => {
     const doc = await loadRoutesApi({
       reader: memoryReader({
