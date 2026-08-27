@@ -1,5 +1,7 @@
 export type ReferenceAttributes = Record<string, string>;
 
+export type PatchAppendIfNotExists = "None" | "End" | "Start";
+
 export type GenerateEntry =
   | {
       kind: "content";
@@ -7,7 +9,13 @@ export type GenerateEntry =
       contents: string;
       attributes?: ReferenceAttributes;
     }
-  | { kind: "patch"; filename: string; content: string; section?: string };
+  | {
+      kind: "patch";
+      filename: string;
+      content: string;
+      section?: string;
+      appendIfNotExists?: PatchAppendIfNotExists;
+    };
 
 export const content = (
   filename: string,
@@ -22,10 +30,19 @@ export const patch = (
   filename: string,
   fileContent: string,
   section?: string,
-): GenerateEntry =>
-  section
-    ? { kind: "patch", filename, content: fileContent, section }
-    : { kind: "patch", filename, content: fileContent };
+  appendIfNotExists?: PatchAppendIfNotExists,
+): GenerateEntry => {
+  if (section === undefined && appendIfNotExists === undefined) {
+    return { kind: "patch", filename, content: fileContent };
+  }
+  return {
+    kind: "patch",
+    filename,
+    content: fileContent,
+    ...(section === undefined ? {} : { section }),
+    ...(appendIfNotExists === undefined ? {} : { appendIfNotExists }),
+  };
+};
 
 export const stripAttributes = (entries: GenerateEntry[]): GenerateEntry[] =>
   entries.map((entry) => {
