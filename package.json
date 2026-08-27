@@ -23,6 +23,10 @@
       "types": "./dist/casing-strategy.d.ts",
       "import": "./dist/casing-strategy.js"
     },
+    "./datasource-naming": {
+      "types": "./dist/datasource-naming.d.ts",
+      "import": "./dist/datasource-naming.js"
+    },
     "./datasource-type-tree": {
       "types": "./dist/datasource-type-tree.d.ts",
       "import": "./dist/datasource-type-tree.js"
@@ -83,7 +87,7 @@
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "typecheck:exports": "tsc -p tsconfig.exports.json --noEmit",
     "typecheck:src-consumer": "tsc -p tsconfig.src-consumer.json --noEmit",
-    "test": "node --experimental-strip-types --test src/routes-api-converter.test.ts src/spec-types.test.ts src/casing-strategy.test.ts src/settings.test.ts src/reference-verifier.test.ts src/datasource-type-tree.test.ts && tsc -p tsconfig.exports.json --noEmit && tsc -p tsconfig.src-consumer.json --noEmit"
+    "test": "node --experimental-strip-types --test src/routes-api-converter.test.ts src/spec-types.test.ts src/casing-strategy.test.ts src/datasource-naming.test.ts src/settings.test.ts src/reference-verifier.test.ts src/datasource-type-tree.test.ts && tsc -p tsconfig.exports.json --noEmit && tsc -p tsconfig.src-consumer.json --noEmit"
   },
   "dependencies": {
     "@deterministic-code/deterministic-specifications-typescript": "github:deterministic-code/deterministic-specifications-typescript#main",
