@@ -39,10 +39,10 @@ const LANGUAGE_CASING_DEFAULTS = {
     directories: "Camel",
   },
   csharp: {
-    file_names: "Camel",
+    file_names: "Pascal",
     types: "Pascal",
     fields: "Pascal",
-    directories: "Camel",
+    directories: "Pascal",
   },
   java: {
     file_names: "Camel",

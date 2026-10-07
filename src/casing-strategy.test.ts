@@ -157,10 +157,10 @@ describe("createCasingStrategy Auto defaults", () => {
     },
     {
       language: "csharp",
-      file: "notificationType",
+      file: "NotificationType",
       type: "NotificationType",
       field: "NotificationType",
-      directory: "notificationType",
+      directory: "NotificationType",
     },
     {
       language: "java",
