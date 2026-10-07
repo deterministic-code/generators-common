@@ -97,10 +97,17 @@ describe("columnFields", () => {
       isArray: true,
     });
     const email = field("email", { type: "string" });
+    const settings = field("settings", {
+      type: "contact_settings{}",
+      kind: "type",
+      base: "contact_settings",
+      isMap: true,
+    });
     assert.equal(isCollectionField(addresses), true);
+    assert.equal(isCollectionField(settings), true);
     assert.equal(isCollectionField(email), false);
     assert.deepEqual(
-      columnFields([email, addresses]).map((f) => f.name),
+      columnFields([email, addresses, settings]).map((f) => f.name),
       ["email"],
     );
   });

@@ -7,6 +7,7 @@ import type {
 } from "@deterministic-code/deterministic-specifications-typescript/parser";
 
 export const TYPES_YAML = "types.yaml";
+export const DATASOURCE_YAML = "datasource.yaml";
 export const DATASOURCE_SEEDS_YAML = "datasource_seeds.yaml";
 export const SERVICES_YAML = "services.yaml";
 export const ROUTES_YAML = "routes.yaml";
@@ -20,11 +21,16 @@ export const typesWithTag = (types: readonly Type[], tag: string): Type[] =>
 export const datasourceTypesOf = (spec: IDeterministic): Type[] =>
   typesWithTag(spec.expandedTypes, "datasource_type");
 
+export const isDictionaryType = (type: Type | undefined): boolean =>
+  type?.inherits === "dictionary";
+
 export const viewTypesOf = (spec: IDeterministic): Type[] =>
-  typesWithTag(spec.expandedTypes, "view_type");
+  typesWithTag(spec.expandedTypes, "view_type").filter(
+    (type) => !isDictionaryType(type),
+  );
 
 export const authoredViewTypesOf = (spec: IDeterministic): Type[] =>
-  typesWithTag(spec.types, "view_type");
+  typesWithTag(spec.types, "view_type").filter((type) => !isDictionaryType(type));
 
 export const isManyToMany = (type: Type): boolean =>
   typeHasTag(type, "many_to_many");
@@ -32,9 +38,9 @@ export const isManyToMany = (type: Type): boolean =>
 export const isReadonlyLookup = (type: Type): boolean =>
   typeHasTag(type, "readonly_lookup");
 
-/** Nested eager collections (`address[]`) are view relations, not persisted columns. */
+/** Nested eager collections (`address[]`, `settings{}`) are view relations, not persisted columns. */
 export const isCollectionField = (field: TypeField): boolean =>
-  field.isArray && field.kind === "type";
+  field.kind === "type" && (field.isArray || field.isMap === true);
 
 export const columnFields = (fields: readonly TypeField[]): TypeField[] =>
   fields.filter((field) => !isCollectionField(field));
@@ -105,3 +111,93 @@ export const tableByName = (
   spec: IDeterministic,
 ): Map<string, DatasourceTable> =>
   new Map(spec.datasource.map((table) => [table.name, table]));
+
+const splitDot = (value: string): [string, string] | undefined => {
+  const i = value.indexOf(".");
+  return i === -1 ? undefined : [value.slice(0, i), value.slice(i + 1)];
+};
+
+const identityNamesOf = (
+  type: Type | undefined,
+  byName: Map<string, Type>,
+  stack: Set<string> = new Set(),
+): Set<string> => {
+  if (!type) return new Set();
+  if (stack.has(type.name)) return new Set();
+  const local = identityColumns(type);
+  if (local.length > 0) return new Set(local);
+  if (type.inherits && type.inherits !== "dictionary") {
+    stack.add(type.name);
+    return identityNamesOf(byName.get(type.inherits), byName, stack);
+  }
+  return new Set();
+};
+
+export const isOwnerIdentityRef = (
+  references: TypeField["references"],
+  selfName: string,
+  byName: Map<string, Type>,
+): boolean => {
+  if (references === undefined) return false;
+  const parts = (Array.isArray(references) ? references : [references]).map(
+    (ref) => {
+      const split = splitDot(ref);
+      return split ? { type: split[0], field: split[1] } : { type: "", field: ref };
+    },
+  );
+  const owner = parts[0]!.type;
+  if (!owner || owner === selfName) return false;
+  const identity = identityNamesOf(byName.get(owner), byName);
+  return parts.every((p) => p.type === owner && identity.has(p.field));
+};
+
+export const dictionaryEntryFields = (
+  dict: Type,
+): { key: TypeField; value: TypeField } | undefined => {
+  const key = dict.fields.find((f) => f.name === "key");
+  const value = dict.fields.find((f) => f.name === "value");
+  if (key === undefined || value === undefined) return undefined;
+  return { key, value };
+};
+
+export const dictionaryOfField = (
+  field: TypeField,
+  byName: Map<string, Type>,
+): Type | undefined => {
+  if (field.isMap !== true) return undefined;
+  const dict = byName.get(field.base);
+  return isDictionaryType(dict) ? dict : undefined;
+};
+
+export const persistedColumnFields = (
+  type: Type,
+  byName: Map<string, Type>,
+): TypeField[] => {
+  if (!isDictionaryType(type)) return columnFields(type.fields);
+  const value = type.fields.find((f) => f.name === "value");
+  if (
+    value === undefined ||
+    value.kind !== "type" ||
+    value.isArray ||
+    value.isMap === true
+  ) {
+    return columnFields(type.fields);
+  }
+  const nested = byName.get(value.base);
+  if (nested === undefined) return columnFields(type.fields);
+  return [
+    ...columnFields(type.fields.filter((f) => f.name !== "value")),
+    ...columnFields(nested.fields),
+  ];
+};
+
+export const dictionaryUniqueColumns = (
+  type: Type,
+  byName: Map<string, Type>,
+): string[] => {
+  if (!isDictionaryType(type)) return [];
+  const owners = type.fields
+    .filter((f) => isOwnerIdentityRef(f.references, type.name, byName))
+    .map((f) => f.name);
+  return type.fields.some((f) => f.name === "key") ? [...owners, "key"] : owners;
+};
