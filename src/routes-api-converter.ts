@@ -92,8 +92,10 @@ const isReadonlyLookup = (type: Type | undefined): boolean =>
 
 /** CRUD/client surface follows routes.yaml candidates (view and/or table), not table-only tags. */
 const isRoutedEntity = (type: Type | undefined): type is Type =>
-  (tagged(type, "datasource_type") || tagged(type, "view_type")) &&
-  !tagged(type, "many_to_many");
+  type !== undefined &&
+  (typeHasTag(type, "datasource_type") || typeHasTag(type, "view_type")) &&
+  !typeHasTag(type, "many_to_many") &&
+  type.inherits !== "dictionary";
 
 const occTable = (
   type: Type | undefined,
