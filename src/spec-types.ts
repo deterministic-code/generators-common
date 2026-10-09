@@ -112,6 +112,37 @@ export const tableByName = (
 ): Map<string, DatasourceTable> =>
   new Map(spec.datasource.map((table) => [table.name, table]));
 
+const referenceTarget = (
+  references: NonNullable<TypeField["references"]>,
+): [string, string] => {
+  if (Array.isArray(references)) return [references[0], references[1]];
+  const [table, col] = references.split(".");
+  return [table ?? "", col ?? ""];
+};
+
+/** Walk `references` to the parent field type; collections keep `[]` / `{}`. */
+export const fieldTypeOf = (
+  field: TypeField,
+  typesByName: ReadonlyMap<string, Type>,
+  seen: Set<string> = new Set(),
+): string => {
+  if (field.type.endsWith("[]") || field.type.endsWith("{}")) {
+    return field.type;
+  }
+  if (field.references !== undefined) {
+    const [logicalTable, logicalCol] = referenceTarget(field.references);
+    const key = `${logicalTable}.${logicalCol}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      const parent = typesByName
+        .get(logicalTable)
+        ?.fields.find((item) => item.name === logicalCol);
+      if (parent !== undefined) return fieldTypeOf(parent, typesByName, seen);
+    }
+  }
+  return field.type || "string";
+};
+
 const splitDot = (value: string): [string, string] | undefined => {
   const i = value.indexOf(".");
   return i === -1 ? undefined : [value.slice(0, i), value.slice(i + 1)];
