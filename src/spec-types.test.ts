@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import type { DatasourceTable, Type, TypeField } from "@deterministic-code/deterministic-specifications-typescript/parser";
 import {
   columnFields,
+  fieldTypeOf,
   identityColumns,
   isCollectionField,
   isPkField,
@@ -84,6 +85,47 @@ describe("identityColumns", () => {
     assert.deepEqual(
       uniqueLookupFields(type).map((e) => e.field),
       ["left_id", "right_id"],
+    );
+  });
+});
+
+describe("fieldTypeOf", () => {
+  it("walks references to the parent field type", () => {
+    const parent = typeOf({
+      name: "parent",
+      inherits: "set",
+      fields: [field("id", { type: "integer" })],
+    });
+    const ownerId = field("owner_id", {
+      type: "string",
+      references: "parent.id",
+    });
+    const typesByName = new Map([["parent", parent]]);
+    assert.equal(fieldTypeOf(ownerId, typesByName), "integer");
+  });
+
+  it("keeps collection shape types", () => {
+    const addresses = field("addresses", {
+      type: "address[]",
+      kind: "type",
+      base: "address",
+      isArray: true,
+      references: "address.contact_id",
+    });
+    assert.equal(fieldTypeOf(addresses, new Map()), "address[]");
+  });
+
+  it("falls back on a cycle or missing parent", () => {
+    const a = field("a_id", { type: "string", references: "b.id" });
+    const b = field("id", { type: "string", references: "a.a_id" });
+    const typesByName = new Map([
+      ["a", typeOf({ name: "a", fields: [a] })],
+      ["b", typeOf({ name: "b", fields: [b] })],
+    ]);
+    assert.equal(fieldTypeOf(a, typesByName), "string");
+    assert.equal(
+      fieldTypeOf(field("orphan_id", { type: "string", references: "missing.id" }), typesByName),
+      "string",
     );
   });
 });
