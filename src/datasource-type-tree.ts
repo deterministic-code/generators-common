@@ -1,5 +1,5 @@
 import { stringify } from "yaml";
-import type { Type } from "@deterministic-code/deterministic-specifications-typescript/parser";
+import type { Type } from "@deterministic-code/deterministic-generators-common/parser";
 
 export type DatasourceTypeTree = { [name: string]: DatasourceTypeTree };
 

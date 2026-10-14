@@ -90,7 +90,7 @@
     "test": "node --experimental-strip-types --test src/routes-api-converter.test.ts src/spec-types.test.ts src/casing-strategy.test.ts src/datasource-naming.test.ts src/settings.test.ts src/reference-verifier.test.ts src/datasource-type-tree.test.ts && tsc -p tsconfig.exports.json --noEmit && tsc -p tsconfig.src-consumer.json --noEmit"
   },
   "dependencies": {
-    "@deterministic-code/deterministic-specifications-typescript": "github:deterministic-code/deterministic-specifications-typescript#main",
+    "@deterministic-code/deterministic-generators-common": "github:deterministic-code/deterministic-generators-common#main",
     "@types/pluralize": "^0.0.33",
     "mustache": "^4.2.0",
     "pluralize": "^8.0.0",

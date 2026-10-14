@@ -4,7 +4,7 @@ import type {
   ServiceByField,
   Type,
   TypeField,
-} from "@deterministic-code/deterministic-specifications-typescript/parser";
+} from "@deterministic-code/deterministic-generators-common/parser";
 
 export const TYPES_YAML = "types.yaml";
 export const DATASOURCE_YAML = "datasource.yaml";

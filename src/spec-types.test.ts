@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { DatasourceTable, Type, TypeField } from "@deterministic-code/deterministic-specifications-typescript/parser";
+import type { DatasourceTable, Type, TypeField } from "@deterministic-code/deterministic-generators-common/parser";
 import {
   columnFields,
   fieldTypeOf,

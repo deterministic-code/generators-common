@@ -16,7 +16,7 @@ import {
   datasourceTypeTreeXml,
   datasourceTypeTreeYaml,
 } from "./datasource-type-tree.ts";
-import type { Type } from "@deterministic-code/deterministic-specifications-typescript/parser";
+import type { Type } from "@deterministic-code/deterministic-generators-common/parser";
 
 const ds = (name: string, refs: string[] = []): Type => ({
   name,
