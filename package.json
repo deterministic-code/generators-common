@@ -15,9 +15,13 @@
   },
   "exports": {
     "./package.json": "./package.json",
-    "./base-type-converter": {
-      "types": "./dist/base-type-converter.d.ts",
-      "import": "./dist/base-type-converter.js"
+    "./deterministic-default-value-converter": {
+      "types": "./dist/deterministic-default-value-converter.d.ts",
+      "import": "./dist/deterministic-default-value-converter.js"
+    },
+    "./deterministic-type-converter": {
+      "types": "./dist/deterministic-type-converter.d.ts",
+      "import": "./dist/deterministic-type-converter.js"
     },
     "./casing-strategy": {
       "types": "./dist/casing-strategy.d.ts",
@@ -87,7 +91,7 @@
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "typecheck:exports": "tsc -p tsconfig.exports.json --noEmit",
     "typecheck:src-consumer": "tsc -p tsconfig.src-consumer.json --noEmit",
-    "test": "node --experimental-strip-types --test src/routes-api-converter.test.ts src/spec-types.test.ts src/casing-strategy.test.ts src/datasource-naming.test.ts src/settings.test.ts src/reference-verifier.test.ts src/datasource-type-tree.test.ts && tsc -p tsconfig.exports.json --noEmit && tsc -p tsconfig.src-consumer.json --noEmit"
+    "test": "node --experimental-strip-types --test src/routes-api-converter.test.ts src/spec-types.test.ts src/casing-strategy.test.ts src/datasource-naming.test.ts src/settings.test.ts src/reference-verifier.test.ts src/datasource-type-tree.test.ts src/deterministic-type-converter.test.ts src/deterministic-default-value-converter.test.ts && tsc -p tsconfig.exports.json --noEmit && tsc -p tsconfig.src-consumer.json --noEmit"
   },
   "dependencies": {
     "@deterministic-code/deterministic-generators-common": "github:deterministic-code/deterministic-generators-common#main",
