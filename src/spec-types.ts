@@ -202,33 +202,35 @@ export const dictionaryOfField = (
 
 export const persistedColumnFields = (
   type: Type,
-  byName: Map<string, Type>,
-): TypeField[] => {
-  if (!isDictionaryType(type)) return columnFields(type.fields);
-  const value = type.fields.find((f) => f.name === "value");
-  if (
-    value === undefined ||
-    value.kind !== "type" ||
-    value.isArray ||
-    value.isMap === true
-  ) {
-    return columnFields(type.fields);
+  _byName?: Map<string, Type>,
+): TypeField[] => columnFields(type.fields);
+
+const roleColumn = (dict: Type, role: string, tableName: string): string => {
+  const field = dict.fields.find((item) => item.name === role);
+  const references = field?.references;
+  if (typeof references === "string") {
+    const [table, column] = references.split(".");
+    if (table === tableName && column !== undefined && column.length > 0) {
+      return column;
+    }
   }
-  const nested = byName.get(value.base);
-  if (nested === undefined) return columnFields(type.fields);
-  return [
-    ...columnFields(type.fields.filter((f) => f.name !== "value")),
-    ...columnFields(nested.fields),
-  ];
+  return role;
 };
 
 export const dictionaryUniqueColumns = (
   type: Type,
   byName: Map<string, Type>,
 ): string[] => {
-  if (!isDictionaryType(type)) return [];
-  const owners = type.fields
-    .filter((f) => isOwnerIdentityRef(f.references, type.name, byName))
-    .map((f) => f.name);
-  return type.fields.some((f) => f.name === "key") ? [...owners, "key"] : owners;
+  for (const candidate of byName.values()) {
+    for (const field of candidate.fields) {
+      if (field.isMap !== true) continue;
+      const dict = byName.get(field.base);
+      if (!isDictionaryType(dict) || dict === undefined) continue;
+      if (typeof field.references !== "string") continue;
+      const [table, owner] = field.references.split(".");
+      if (table !== type.name || owner === undefined || owner.length === 0) continue;
+      return [owner, roleColumn(dict, "key", type.name)];
+    }
+  }
+  return [];
 };
