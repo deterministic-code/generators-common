@@ -7,6 +7,7 @@ import {
   identityColumns,
   isCollectionField,
   isPkField,
+  persistedColumnFields,
   primaryKeyColumn,
   uniqueLookupFields,
 } from "./spec-types.ts";
@@ -126,6 +127,51 @@ describe("fieldTypeOf", () => {
     assert.equal(
       fieldTypeOf(field("orphan_id", { type: "string", references: "missing.id" }), typesByName),
       "string",
+    );
+  });
+});
+
+describe("persistedColumnFields", () => {
+  it("expands a dictionary value type into columns", () => {
+    const locale = typeOf({
+      name: "locale_preferences",
+      tags: ["view_type"],
+      fields: [
+        field("locale", { type: "string" }),
+        field("timezone", { type: "string" }),
+      ],
+    });
+    const prefs = typeOf({
+      name: "contact_preferences",
+      inherits: "dictionary",
+      fields: [
+        field("contact_id"),
+        field("key", { type: "string" }),
+        field("value", { type: "locale_preferences", base: "locale_preferences" }),
+      ],
+    });
+    const byName = new Map([
+      ["locale_preferences", locale],
+      ["contact_preferences", prefs],
+    ]);
+    assert.deepEqual(
+      persistedColumnFields(prefs, byName).map((f) => f.name),
+      ["contact_id", "locale", "timezone"],
+    );
+  });
+
+  it("keeps key and value when the value type is unknown", () => {
+    const prefs = typeOf({
+      name: "settings",
+      inherits: "dictionary",
+      fields: [
+        field("key", { type: "string" }),
+        field("value", { type: "string" }),
+      ],
+    });
+    assert.deepEqual(
+      persistedColumnFields(prefs, new Map()).map((f) => f.name),
+      ["key", "value"],
     );
   });
 });
