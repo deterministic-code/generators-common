@@ -1,18 +1,16 @@
-import { createDatasourceNaming, type IDatasourceNaming } from "./datasource-naming.ts";
+import { Pluralizer } from "./pluralizer.ts";
 
 export type TypeKind = "datasource" | "view";
 
 export class Paths {
-  private readonly naming: IDatasourceNaming;
-
-  constructor(naming: IDatasourceNaming = createDatasourceNaming({})) {
-    this.naming = naming;
-  }
+  private readonly pluralizer = new Pluralizer();
 
   typesDir = (kind: TypeKind): string => `types/${kind}`;
 
   repositoriesDir = (): string => "repositories";
 
+  typeStem = (specName: string): string => this.pluralizer.singular(specName);
+
   repositoryStem = (specName: string): string =>
-    `${this.naming.physicalStem(specName)}_repository`;
+    `${this.pluralizer.plural(this.typeStem(specName))}_repository`;
 }

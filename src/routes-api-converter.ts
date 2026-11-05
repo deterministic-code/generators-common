@@ -1,6 +1,5 @@
-/// <reference path="./pluralize-module.d.ts" />
-import pluralize from "pluralize";
 import { parse as parseYaml } from "yaml";
+import { Pluralizer } from "./pluralizer.ts";
 import type { GenerateContext } from "./generate-context.ts";
 import {
   DeterministicParser,
@@ -54,11 +53,9 @@ const REF_PREFIX = "#/components/schemas/";
 
 const specName = (raw: string): string => raw.replace(/-/g, "_");
 
-const specPlural = (name: string): string => {
-  const parts = specName(name).split("_");
-  parts[parts.length - 1] = pluralize.plural(parts[parts.length - 1]!);
-  return parts.join("_");
-};
+const pluralizer = new Pluralizer();
+
+const specPlural = (name: string): string => pluralizer.plural(specName(name));
 
 const camelIdent = (name: string): string =>
   specName(name).replace(/_([a-z0-9])/gi, (_, ch: string) => ch.toUpperCase());
