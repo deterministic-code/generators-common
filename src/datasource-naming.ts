@@ -1,10 +1,8 @@
-/// <reference path="./pluralize-module.d.ts" />
 import { createCasingStrategy } from "./casing-strategy.ts";
-import pluralize from "pluralize";
+import { Pluralizer } from "./pluralizer.ts";
 
 const SNAKE_STEM = /^[a-z_][a-z0-9_]*$/;
-const lastTokenPluralize = (name: string): string =>
-  name ? name.replace(/[^_]+$/, (token) => pluralize(token)) : name;
+const pluralizer = new Pluralizer();
 
 export type IDatasourceNaming = {
   isVerbatim: (mapping: string) => boolean
@@ -31,7 +29,7 @@ export const createDatasourceNaming = (
     isVerbatim(name)
       ? name
       : pluralizeNames
-        ? lastTokenPluralize(name)
+        ? pluralizer.plural(name)
         : name;
   const resolve = (
     convert: (stem: string) => string,
