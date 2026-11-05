@@ -202,8 +202,19 @@ export const dictionaryOfField = (
 
 export const persistedColumnFields = (
   type: Type,
-  _byName?: Map<string, Type>,
-): TypeField[] => columnFields(type.fields);
+  byName?: Map<string, Type>,
+): TypeField[] => {
+  if (byName !== undefined && isDictionaryType(type)) {
+    const entry = dictionaryEntryFields(type);
+    const valueName = entry?.value.base || entry?.value.type;
+    const valueType = valueName === undefined ? undefined : byName.get(valueName);
+    if (entry !== undefined && valueType !== undefined) {
+      const extras = type.fields.filter((f) => f.name !== "key" && f.name !== "value");
+      return columnFields([...extras, ...valueType.fields]);
+    }
+  }
+  return columnFields(type.fields);
+};
 
 const roleColumn = (dict: Type, role: string, tableName: string): string => {
   const field = dict.fields.find((item) => item.name === role);
