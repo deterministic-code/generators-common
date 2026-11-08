@@ -120,7 +120,24 @@ const referenceTarget = (
   return [table ?? "", col ?? ""];
 };
 
-/** Walk `references` to the parent field type; collections keep `[]` / `{}`. */
+const fieldOn = (
+  name: string,
+  column: string,
+  typesByName: ReadonlyMap<string, Type>,
+  stack: Set<string> = new Set(),
+): TypeField | undefined => {
+  if (stack.has(name)) return undefined;
+  const type = typesByName.get(name);
+  if (type === undefined) return undefined;
+  const found = type.fields.find((item) => item.name === column);
+  if (found !== undefined) return found;
+  if (type.inherits === undefined || type.inherits === "dictionary" || type.inherits === "set")
+    return undefined;
+  stack.add(name);
+  return fieldOn(type.inherits, column, typesByName, stack);
+};
+
+/** Walk `references` to the parent field type, including `id` on `base`; collections keep `[]` / `{}`. */
 export const fieldTypeOf = (
   field: TypeField,
   typesByName: ReadonlyMap<string, Type>,
@@ -134,13 +151,22 @@ export const fieldTypeOf = (
     const key = `${logicalTable}.${logicalCol}`;
     if (!seen.has(key)) {
       seen.add(key);
-      const parent = typesByName
-        .get(logicalTable)
-        ?.fields.find((item) => item.name === logicalCol);
+      const parent = fieldOn(logicalTable, logicalCol, typesByName);
       if (parent !== undefined) return fieldTypeOf(parent, typesByName, seen);
     }
   }
   return field.type || "string";
+};
+
+export const inferReferenceFieldTypes = (types: Type[]): Type[] => {
+  const byName = new Map(types.map((type) => [type.name, type]));
+  return types.map((type) => ({
+    ...type,
+    fields: type.fields.map((field) => {
+      const resolved = fieldTypeOf(field, byName);
+      return resolved === field.type ? field : { ...field, type: resolved };
+    }),
+  }));
 };
 
 const splitDot = (value: string): [string, string] | undefined => {

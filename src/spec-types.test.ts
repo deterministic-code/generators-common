@@ -5,6 +5,7 @@ import {
   columnFields,
   fieldTypeOf,
   identityColumns,
+  inferReferenceFieldTypes,
   isCollectionField,
   isPkField,
   persistedColumnFields,
@@ -114,6 +115,34 @@ describe("fieldTypeOf", () => {
       references: "address.contact_id",
     });
     assert.equal(fieldTypeOf(addresses, new Map()), "address[]");
+  });
+
+  it("uses id on base when the parent type inherits", () => {
+    const base = typeOf({
+      name: "base",
+      fields: [field("id", { type: "integer", isId: true })],
+    });
+    const contact = typeOf({
+      name: "contact",
+      inherits: "base",
+      fields: [field("given_name", { type: "string" })],
+    });
+    const contactId = field("contact_id", { type: "string", references: "contact.id" });
+    const typesByName = new Map([
+      ["base", base],
+      ["contact", contact],
+    ]);
+    assert.equal(fieldTypeOf(contactId, typesByName), "integer");
+    const address = typeOf({
+      name: "address",
+      inherits: "base",
+      fields: [contactId],
+    });
+    const inferred = inferReferenceFieldTypes([base, contact, address]);
+    assert.equal(
+      inferred.find((type) => type.name === "address")?.fields.find((item) => item.name === "contact_id")?.type,
+      "integer",
+    );
   });
 
   it("falls back on a cycle or missing parent", () => {
