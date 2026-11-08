@@ -85,7 +85,7 @@ export const isPkField = (
 ): boolean => identityColumns(type, table).includes(field.name);
 
 export const uniqueLookupFields = (
-  type: TypeKey,
+  type: TypeKey & Pick<Type, "name">,
   table?: DatasourceTable,
 ): ServiceByField[] => {
   const out: ServiceByField[] = [];
@@ -93,10 +93,13 @@ export const uniqueLookupFields = (
     if (out.some((e) => e.field === name)) return;
     const f = type.fields.find((x) => x.name === name);
     if (f !== undefined && isCollectionField(f)) return;
+    if (f === undefined || f.type.length === 0) {
+      throw new Error(`${type.name}.${name} has no type`);
+    }
     out.push({
       field: name,
-      type: typeof f?.type === "string" ? f.type : "string",
-      ...(typeof f?.size === "number" ? { size: f.size } : {}),
+      type: f.type,
+      ...(typeof f.size === "number" ? { size: f.size } : {}),
     });
   };
   for (const name of identityColumns(type, table)) add(name);
@@ -111,37 +114,6 @@ export const tableByName = (
   spec: IDeterministic,
 ): Map<string, DatasourceTable> =>
   new Map(spec.datasource.map((table) => [table.name, table]));
-
-const referenceTarget = (
-  references: NonNullable<TypeField["references"]>,
-): [string, string] => {
-  if (Array.isArray(references)) return [references[0], references[1]];
-  const [table, col] = references.split(".");
-  return [table ?? "", col ?? ""];
-};
-
-/** Walk `references` to the parent field type; collections keep `[]` / `{}`. */
-export const fieldTypeOf = (
-  field: TypeField,
-  typesByName: ReadonlyMap<string, Type>,
-  seen: Set<string> = new Set(),
-): string => {
-  if (field.type.endsWith("[]") || field.type.endsWith("{}")) {
-    return field.type;
-  }
-  if (field.references !== undefined) {
-    const [logicalTable, logicalCol] = referenceTarget(field.references);
-    const key = `${logicalTable}.${logicalCol}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      const parent = typesByName
-        .get(logicalTable)
-        ?.fields.find((item) => item.name === logicalCol);
-      if (parent !== undefined) return fieldTypeOf(parent, typesByName, seen);
-    }
-  }
-  return field.type || "string";
-};
 
 const splitDot = (value: string): [string, string] | undefined => {
   const i = value.indexOf(".");
