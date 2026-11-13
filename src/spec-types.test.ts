@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { DatasourceTable, Type, TypeField } from "@deterministic-code/deterministic-generators-common/parser";
+import type { DatasourceTable, IDeterministic, Type, TypeField } from "@deterministic-code/deterministic-generators-common/parser";
 import {
+  authoredViewTypesOf,
   columnFields,
   identityColumns,
   isCollectionField,
@@ -9,6 +10,7 @@ import {
   persistedColumnFields,
   primaryKeyColumn,
   uniqueLookupFields,
+  viewTypesOf,
 } from "./spec-types.ts";
 
 const field = (name: string, extras: Partial<TypeField> = {}): TypeField => ({
@@ -139,6 +141,27 @@ describe("persistedColumnFields", () => {
       persistedColumnFields(prefs, new Map()).map((f) => f.name),
       ["key", "value"],
     );
+  });
+});
+
+describe("viewTypesOf", () => {
+  it("includes a dictionary view", () => {
+    const dict = typeOf({
+      name: "settings_map",
+      tags: ["view_type"],
+      inherits: "dictionary",
+      fields: [field("key", { type: "string" }), field("value", { type: "string" })],
+    });
+    const spec = {
+      types: [dict],
+      expandedTypes: [dict],
+      datasource: [],
+      datasourceSeeds: new Map(),
+      services: { services: [] },
+      routes: { routes: [] },
+    } as IDeterministic;
+    assert.deepEqual(viewTypesOf(spec).map((type) => type.name), ["settings_map"]);
+    assert.deepEqual(authoredViewTypesOf(spec).map((type) => type.name), ["settings_map"]);
   });
 });
 

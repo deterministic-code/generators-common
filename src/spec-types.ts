@@ -25,12 +25,10 @@ export const isDictionaryType = (type: Type | undefined): boolean =>
   type?.inherits === "dictionary";
 
 export const viewTypesOf = (spec: IDeterministic): Type[] =>
-  typesWithTag(spec.expandedTypes, "view_type").filter(
-    (type) => !isDictionaryType(type),
-  );
+  typesWithTag(spec.expandedTypes, "view_type");
 
 export const authoredViewTypesOf = (spec: IDeterministic): Type[] =>
-  typesWithTag(spec.types, "view_type").filter((type) => !isDictionaryType(type));
+  typesWithTag(spec.types, "view_type");
 
 export const isManyToMany = (type: Type): boolean =>
   typeHasTag(type, "many_to_many");
